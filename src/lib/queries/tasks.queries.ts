@@ -60,7 +60,7 @@ export function useUpdateTaskStatus() {
 
       return { previousTask }
     },
-    onError: (err, { id }, context) => {
+    onError: (_err, { id }, context) => {
       if (context?.previousTask) {
         qc.setQueryData(KEYS.TASK(id), context.previousTask)
       }

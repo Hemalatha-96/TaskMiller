@@ -1,19 +1,14 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useEffect } from 'react'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 import { getAccessToken } from '../utils/token'
 
 export const Route = createFileRoute('/')({
-  component: IndexRedirect,
-})
-
-function IndexRedirect() {
-  const navigate = useNavigate()
-
-  useEffect(() => {
+  beforeLoad: () => {
+    if (typeof window === 'undefined') return
     const isAuthenticated = Boolean(getAccessToken())
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    navigate({ to: (isAuthenticated ? '/dashboard' : '/login') as any, replace: true })
-  }, [navigate])
-
-  return null
-}
+    if (isAuthenticated) {
+      throw redirect({ to: '/dashboard', search: { q: undefined, status: undefined, projectId: undefined, priority: undefined, page: undefined }, replace: true })
+    }
+    throw redirect({ to: '/login', search: { redirect: undefined }, replace: true })
+  },
+  component: () => null,
+})

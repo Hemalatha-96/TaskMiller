@@ -4,6 +4,16 @@ import { Sidebar } from '../components/layout/Sidebar'
 import { Topbar } from '../components/layout/Topbar'
 import { getAccessToken } from '../utils/token'
 
+function DashboardNotFound() {
+  return (
+    <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-500">
+      <span className="text-5xl font-bold text-gray-200">404</span>
+      <p className="text-base font-medium text-gray-500">Page not found</p>
+      <p className="text-sm text-gray-400">The page you're looking for doesn't exist.</p>
+    </div>
+  )
+}
+
 export const Route = createFileRoute('/_dashboard')({
   beforeLoad: ({ location }) => {
     // Check localStorage directly — Zustand persist hydration is async and may
@@ -13,6 +23,7 @@ export const Route = createFileRoute('/_dashboard')({
     if (!token) throw redirect({ to: '/login', search: { redirect: location.href } })
   },
   component: DashboardLayout,
+  notFoundComponent: DashboardNotFound,
 })
 
 function DashboardLayout() {

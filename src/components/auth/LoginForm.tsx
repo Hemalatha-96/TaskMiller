@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, Link } from '@tanstack/react-router'
+import { useNavigate } from '@tanstack/react-router'
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react'
 import { Input } from '../ui/input'
 import { Button } from '../ui/button'
@@ -142,25 +142,15 @@ export function LoginForm({ redirectTo }: LoginFormProps) {
               </button>
             </div>
           </div>
-          <div className="flex items-center justify-between text-sm">
-            <label className="flex items-center gap-2 text-gray-600 cursor-pointer">
-              <input type="checkbox" className="rounded border-gray-300 text-[#F4622A]" />
-              Remember me
-            </label>
-          </div>
           <Button type="submit" className="w-full" loading={login.isPending} size="lg">
             Sign In
           </Button>
-          <p className="text-center text-sm text-gray-500">
-            Don't have an account?{' '}
-            <Link to="/register" className="text-[#F4622A] font-medium hover:underline">Sign up</Link>
-          </p>
-           <div className="mt-4 rounded-lg bg-orange-50 border border-orange-200 p-3 text-xs text-orange-700 space-y-1">
-            {/* <p className="font-semibold">Demo credentials:</p>
-            <p>Super Admin: superadmin@taskmiller.com / SuperAdmin@123</p>
-            <p>Admin: maheshbabubaddipudi@gmail.com /admin123</p>
-            <p>Developer: dev1@company.com /password123</p> */}
-          </div> 
+          <div className="mt-4 rounded-lg bg-orange-50 border border-orange-200 p-3 text-xs text-orange-700 space-y-1">
+            {/* <p className="font-semibold">Demo credentials:</p> */}
+            {/* <p>Super Admin: superadmin@taskmiller.com / SuperAdmin@123</p>
+            <p>Admin: maheshbabubaddipudi@gmail.com / admin123</p>
+            <p>Developer: dev1@company.com / password123</p> */}
+          </div>
         </form>
       )}
 
@@ -181,10 +171,6 @@ export function LoginForm({ redirectTo }: LoginFormProps) {
               <Button type="submit" className="w-full" loading={requestOtp.isPending} size="lg">
                 Send OTP
               </Button>
-              <p className="text-center text-sm text-gray-500">
-                Don't have an account?{' '}
-                <Link to="/register" className="text-[#F4622A] font-medium hover:underline">Sign up</Link>
-              </p>
             </form>
           )}
 

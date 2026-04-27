@@ -276,7 +276,7 @@ function TaskDetailPage() {
         <p className="text-sm text-gray-400 mb-6">This task may have been deleted or doesn't exist.</p>
         <Link
           to="/tasks"
-          search={{ q: '', status: '', projectId: '', priority: '', page: 1 }}
+          search={{ q: undefined, status: undefined, projectId: undefined, priority: undefined, page: undefined }}
           className="inline-flex items-center gap-2 bg-[#F4622A] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#E05520] transition"
         >
           <ChevronLeft className="w-4 h-4" /> Back to Tasks
@@ -290,7 +290,7 @@ function TaskDetailPage() {
       <div className="max-w-6xl mx-auto space-y-6 pb-6">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-gray-500">
-        <Link to="/tasks" search={{ q: '', status: '', projectId: '', priority: '', page: 1 }} className="flex items-center gap-1 hover:text-[#F4622A] transition">
+        <Link to="/tasks" search={{ q: undefined, status: undefined, projectId: undefined, priority: undefined, page: undefined }} className="flex items-center gap-1 hover:text-[#F4622A] transition">
           <ChevronLeft className="w-4 h-4" />
           Tasks
         </Link>

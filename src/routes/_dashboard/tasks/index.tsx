@@ -12,7 +12,7 @@ import { AvatarGroup } from '../../../components/ui/avatar'
 import { getTaskStatusColor, getAllowedStatuses, getEffectiveStatus } from '../../../utils/status'
 import { TASK_STATUS_LABELS, TASK_PRIORITY_OPTIONS } from '../../../constants/enums'
 import { formatDate, isOverdue } from '../../../utils/date'
-import { LoadingSpinner } from '../../../components/common/LoadingSpinner'
+import { TaskTableSkeleton } from '../../../components/common/TaskTableSkeleton'
 import { useModal } from '../../../hooks/useModal'
 import { useDebounce } from '../../../hooks/useDebounce'
 import { cn } from '../../../utils/cn'
@@ -22,11 +22,11 @@ import { useOrgStore } from '../../../store/org.store'
 
 export const Route = createFileRoute('/_dashboard/tasks/')({
   validateSearch: (search: Record<string, unknown>) => ({
-    q: (search.q as string) || '',
-    status: (search.status as string) || '',
-    projectId: (search.projectId as string) || '',
-    priority: (search.priority as string) || '',
-    page: Number(search.page) || 1,
+    q: (search.q as string) || undefined,
+    status: (search.status as string) || undefined,
+    projectId: (search.projectId as string) || undefined,
+    priority: (search.priority as string) || undefined,
+    page: Number(search.page) > 1 ? Number(search.page) : undefined,
   }),
   component: TasksPage,
 })
@@ -131,14 +131,14 @@ function TasksPage() {
   const { activeOrgId } = useOrgStore()
   const effectiveOrgId = isSuperAdmin ? (activeOrgId ?? undefined) : (orgId ?? undefined)
 
-  const debouncedQ = useDebounce(search.q, 400)
+  const debouncedQ = useDebounce(search.q ?? '', 400)
 
   const { data, isLoading } = useTasks({
     search: debouncedQ,
-    status: search.status || undefined,
-    projectId: search.projectId || undefined,
-    priority: search.priority || undefined,
-    page: search.page,
+    status: search.status,
+    projectId: search.projectId,
+    priority: search.priority,
+    page: search.page ?? 1,
     limit: PAGE_SIZE,
     orgId: effectiveOrgId,
   })
@@ -157,12 +157,19 @@ function TasksPage() {
   const projectMap = Object.fromEntries(projects.map((p) => [p.id, p.title]))
   const overdueCount = tasks.filter((t) => isOverdue(t.dueDate) && t.status !== 'completed').length
 
-  const setFilter = (updates: Partial<typeof search>) => {
-    navigate({ search: (prev) => ({ ...prev, ...updates, page: 1 }), replace: true })
+  const setFilter = (updates: Record<string, string | number | undefined>) => {
+    navigate({
+      search: (prev) => ({
+        ...prev,
+        ...Object.fromEntries(Object.entries(updates).map(([k, v]) => [k, v === '' ? undefined : v])),
+        page: undefined,
+      }),
+      replace: true,
+    })
   }
 
   const setPage = (page: number) => {
-    navigate({ search: (prev) => ({ ...prev, page }), replace: true })
+    navigate({ search: (prev) => ({ ...prev, page: page > 1 ? page : undefined }), replace: true })
   }
 
   const STATS = [
@@ -208,7 +215,7 @@ function TasksPage() {
           <h2 className="text-sm font-semibold text-gray-800">Tasks List</h2>
           <div className="flex flex-wrap items-center gap-2">
             <SearchDropdown
-              value={search.q}
+              value={search.q || ''}
               onChange={(q) => setFilter({ q })}
               onSelect={(item) => navigate({ to: '/tasks/$taskId', params: { taskId: item.id } })}
               suggestions={tasks.map((t) => ({
@@ -220,7 +227,7 @@ function TasksPage() {
               className="min-w-[220px]"
             />
             <select
-              value={search.status}
+              value={search.status || ''}
               onChange={(e) => setFilter({ status: e.target.value })}
               className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm bg-white focus:outline-none focus:border-[#F4622A]"
             >
@@ -232,7 +239,7 @@ function TasksPage() {
               <option value="completed">Completed</option>
             </select>
             <select
-              value={search.projectId}
+              value={search.projectId || ''}
               onChange={(e) => setFilter({ projectId: e.target.value })}
               className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm bg-white focus:outline-none focus:border-[#F4622A]"
             >
@@ -240,7 +247,7 @@ function TasksPage() {
               {projects.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
             </select>
             <select
-              value={search.priority}
+              value={search.priority || ''}
               onChange={(e) => setFilter({ priority: e.target.value })}
               className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm bg-white focus:outline-none focus:border-[#F4622A]"
             >
@@ -253,9 +260,7 @@ function TasksPage() {
         </div>
 
         {isLoading ? (
-          <div className="flex-1 min-h-0">
-            <LoadingSpinner />
-          </div>
+          <TaskTableSkeleton rows={8} includeCreatedBy={true} />
         ) : (
           <div className="flex-1 min-h-0 overflow-auto">
             <table className="w-full text-sm">
@@ -271,7 +276,7 @@ function TasksPage() {
                   <tr><td colSpan={9} className="px-4 py-8 text-center text-sm text-gray-400">No tasks found</td></tr>
                 ) : tasks.map((task, i) => (
                   <tr key={task.id} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="px-4 py-3 text-gray-400 text-xs">{String((search.page - 1) * PAGE_SIZE + i + 1).padStart(2, '0')}</td>
+                    <td className="px-4 py-3 text-gray-400 text-xs">{String(((search.page ?? 1) - 1) * PAGE_SIZE + i + 1).padStart(2, '0')}</td>
                     <td className="px-4 py-3 text-xs font-medium text-gray-600 whitespace-nowrap">{projectMap[task.projectId] ?? task.projectName ?? '—'}</td>
                     <td className="px-4 py-3">
                       <Link to="/tasks/$taskId" params={{ taskId: task.id }} className="font-medium text-gray-800 hover:text-[#F4622A] transition-colors whitespace-nowrap">
@@ -311,7 +316,7 @@ function TasksPage() {
 
         <div className="flex-shrink-0">
           <Pagination
-            page={search.page}
+            page={search.page ?? 1}
             totalPages={data?.totalPages ?? 1}
             total={data?.total ?? 0}
             pageSize={PAGE_SIZE}

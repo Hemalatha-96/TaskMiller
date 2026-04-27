@@ -267,14 +267,14 @@ export async function getTasks(params: PaginationParams & { projectId?: string; 
     params: {
       page: params.page,
       limit: params.limit,
-      search: params.search,
-      status: params.status,
-      projectId: params.projectId,
-      priority: params.priority,
+      search: params.search || undefined,
+      status: params.status || undefined,
+      projectId: params.projectId || undefined,
+      priority: params.priority || undefined,
       sortBy: params.sortBy || 'createdAt',
       sortOrder: params.sortOrder || 'desc',
-      orgId: params.orgId,
-      assigneeId: params.assigneeId,
+      orgId: params.orgId || undefined,
+      assigneeId: params.assigneeId || undefined,
     },
   })
 

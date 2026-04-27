@@ -213,12 +213,12 @@ export async function getProjects(params: PaginationParams & { memberId?: string
     params: {
       page: params.page,
       limit: params.limit,
-      search: params.search,
-      status: params.status,
+      search: params.search || undefined,
+      status: params.status || undefined,
       sortBy: params.sortBy || 'createdAt',
       sortOrder: params.sortOrder || 'desc',
-      orgId: params.orgId,
-      memberId: params.memberId,
+      orgId: params.orgId || undefined,
+      memberId: params.memberId || undefined,
     },
   })
 

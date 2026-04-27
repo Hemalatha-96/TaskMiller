@@ -35,7 +35,7 @@ export function RegisterForm() {
       <Button type="submit" className="w-full" loading={register.isPending} size="lg">Create Account</Button>
       <p className="text-center text-sm text-gray-500">
         Already have an account?{' '}
-        <Link to="/login" search={{}} className="text-[#F4622A] font-medium hover:underline">
+        <Link to="/login" search={{ redirect: undefined }} className="text-[#F4622A] font-medium hover:underline">
           Sign in
         </Link>
       </p>

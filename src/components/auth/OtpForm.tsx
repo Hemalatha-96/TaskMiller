@@ -60,7 +60,7 @@ export function OtpForm() {
       <Button type="submit" className="w-full" loading={requestOtp.isPending} size="lg">Send OTP</Button>
       <p className="text-center text-sm text-gray-500">
         Remember your password?{' '}
-        <Link to="/login" search={{}} className="text-[#F4622A] font-medium hover:underline">
+        <Link to="/login" search={{ redirect: undefined }} className="text-[#F4622A] font-medium hover:underline">
           Sign in
         </Link>
       </p>

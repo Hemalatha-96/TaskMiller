@@ -31,7 +31,7 @@ export function Sidebar() {
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         <Link
           to="/dashboard"
-          search={{ q: '', status: '', projectId: '', priority: '', page: 1 }}
+          search={{ q: undefined, status: undefined, projectId: undefined, priority: undefined, page: undefined }}
           className={cn(
             'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
             isActive('/dashboard')
@@ -45,7 +45,7 @@ export function Sidebar() {
 
         <Link
           to="/tasks"
-          search={{ q: '', status: '', projectId: '', priority: '', page: 1 }}
+          search={{ q: undefined, status: undefined, projectId: undefined, priority: undefined, page: undefined }}
           className={cn(
             'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
             isActive('/tasks')
@@ -59,7 +59,7 @@ export function Sidebar() {
 
         <Link
           to="/projects"
-          search={{ q: '', status: '', page: 1 }}
+          search={{ q: undefined, status: undefined, page: undefined }}
           className={cn(
             'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
             isActive('/projects')
@@ -74,7 +74,7 @@ export function Sidebar() {
         {isAdmin && (
           <Link
             to="/users"
-            search={{ q: '', status: '', page: 1 }}
+            search={{ q: undefined, status: undefined, page: undefined }}
             className={cn(
               'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
               isActive('/users')
@@ -90,7 +90,7 @@ export function Sidebar() {
         {isAdmin && (
           <Link
             to="/audit-logs"
-            search={{ q: '', page: 1 }}
+            search={{ q: undefined, page: undefined }}
             className={cn(
               'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
               isActive('/audit-logs')

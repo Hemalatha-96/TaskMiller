@@ -8,7 +8,7 @@ import { ConfirmDeleteModal } from '../../../components/common/ConfirmDeleteModa
 import { SearchDropdown } from '../../../components/common/SearchDropdown'
 import { Modal } from '../../../components/ui/modal'
 import { Pagination } from '../../../components/ui/Pagination'
-import { LoadingSpinner } from '../../../components/common/LoadingSpinner'
+import { ProjectGridSkeleton } from '../../../components/common/ProjectGridSkeleton'
 import { useModal } from '../../../hooks/useModal'
 import { useDebounce } from '../../../hooks/useDebounce'
 import { PROJECT_STATUS_OPTIONS } from '../../../constants/enums'
@@ -18,9 +18,9 @@ import type { Project } from '../../../types/project.types'
 
 export const Route = createFileRoute('/_dashboard/projects/')({
   validateSearch: (search: Record<string, unknown>) => ({
-    q: (search.q as string) || '',
-    status: (search.status as string) || '',
-    page: Number(search.page) || 1,
+    q: (search.q as string) || undefined,
+    status: (search.status as string) || undefined,
+    page: Number(search.page) > 1 ? Number(search.page) : undefined,
   }),
   component: ProjectsPage,
 })
@@ -34,13 +34,13 @@ function ProjectsPage() {
   const { orgId, isSuperAdmin, isAdmin } = useAuth()
   const { activeOrgId } = useOrgStore()
 
-  const debouncedQ = useDebounce(search.q, 400)
+  const debouncedQ = useDebounce(search.q ?? '', 400)
   const effectiveOrgId = isSuperAdmin ? (activeOrgId ?? undefined) : (orgId ?? undefined)
 
   const { data, isLoading } = useProjects({
     search: debouncedQ || undefined,
-    status: search.status || undefined,
-    page: search.page,
+    status: search.status,
+    page: search.page ?? 1,
     limit: PAGE_SIZE,
     orgId: effectiveOrgId,
   })
@@ -51,12 +51,19 @@ function ProjectsPage() {
 
   const projects = data?.data ?? []
 
-  const setFilter = (updates: Partial<typeof search>) => {
-    navigate({ search: (prev) => ({ ...prev, ...updates, page: 1 }), replace: true })
+  const setFilter = (updates: Record<string, string | number | undefined>) => {
+    navigate({
+      search: (prev) => ({
+        ...prev,
+        ...Object.fromEntries(Object.entries(updates).map(([k, v]) => [k, v === '' ? undefined : v])),
+        page: undefined,
+      }),
+      replace: true,
+    })
   }
 
   const setPage = (page: number) => {
-    navigate({ search: (prev) => ({ ...prev, page }), replace: true })
+    navigate({ search: (prev) => ({ ...prev, page: page > 1 ? page : undefined }), replace: true })
   }
 
   const handleDelete = async () => {
@@ -93,7 +100,7 @@ function ProjectsPage() {
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-3">
           <SearchDropdown
-            value={search.q}
+            value={search.q || ''}
             onChange={(q) => setFilter({ q })}
             onSelect={(item) => navigate({ to: '/projects/$projectId', params: { projectId: item.id } })}
             suggestions={projects.map((p) => ({ id: p.id, label: p.title, subtitle: p.orgName ?? p.description ?? undefined }))}
@@ -101,7 +108,7 @@ function ProjectsPage() {
             className="min-w-[240px]"
           />
           <select
-            value={search.status}
+            value={search.status ?? ''}
             onChange={(e) => setFilter({ status: e.target.value })}
             className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm bg-white focus:outline-none focus:border-[#F4622A]"
           >
@@ -115,8 +122,8 @@ function ProjectsPage() {
 
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm flex-1 min-h-0 flex flex-col overflow-hidden">
         {isLoading ? (
-          <div className="flex-1 min-h-0">
-            <LoadingSpinner />
+          <div className="flex-1 min-h-0 overflow-y-auto p-4">
+            <ProjectGridSkeleton count={8} />
           </div>
         ) : (
           <div className="flex-1 min-h-0 overflow-y-auto p-4">
@@ -130,7 +137,7 @@ function ProjectsPage() {
 
         <div className="flex-shrink-0">
           <Pagination
-            page={search.page}
+            page={search.page ?? 1}
             totalPages={data?.totalPages ?? 1}
             total={data?.total ?? 0}
             pageSize={PAGE_SIZE}

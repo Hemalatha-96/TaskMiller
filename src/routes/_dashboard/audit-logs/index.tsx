@@ -15,8 +15,8 @@ import type { AuditLog } from '../../../types/audit-log.types'
 
 export const Route = createFileRoute('/_dashboard/audit-logs/')({
   validateSearch: (search: Record<string, unknown>) => ({
-    q: (search.q as string) || '',
-    page: Number(search.page) || 1,
+    q: (search.q as string) || undefined,
+    page: Number(search.page) > 1 ? Number(search.page) : undefined,
   }),
   component: AuditLogsPage,
 })
@@ -48,10 +48,10 @@ function AuditLogsPage() {
   const { activeOrgId } = useOrgStore()
   const effectiveOrgId = isSuperAdmin ? (activeOrgId ?? undefined) : (orgId ?? undefined)
 
-  const debouncedQ = useDebounce(search.q, 350)
+  const debouncedQ = useDebounce(search.q ?? '', 350)
 
   const { data, isLoading, error } = useAuditLogs({
-    page: search.page,
+    page: search.page ?? 1,
     limit: PAGE_SIZE,
     search: debouncedQ || undefined,
     orgId: effectiveOrgId,
@@ -61,17 +61,24 @@ function AuditLogsPage() {
 
   const empty = !isLoading && !error && logs.length === 0
 
-  const setFilter = (updates: Partial<typeof search>) => {
-    navigate({ search: (prev) => ({ ...prev, ...updates, page: 1 }), replace: true })
+  const setFilter = (updates: Record<string, string | undefined>) => {
+    navigate({
+      search: (prev) => ({
+        ...prev,
+        ...Object.fromEntries(Object.entries(updates).map(([k, v]) => [k, v === '' ? undefined : v])),
+        page: undefined,
+      }),
+      replace: true,
+    })
   }
 
   const setPage = (page: number) => {
-    navigate({ search: (prev) => ({ ...prev, page }), replace: true })
+    navigate({ search: (prev) => ({ ...prev, page: page > 1 ? page : undefined }), replace: true })
   }
 
   const title = useMemo(() => {
     if (!isAdmin) return 'Audit Logs'
-    return debouncedQ ? `Audit Logs (${data?.total ?? 0} results)` : `Audit Logs (${data?.total ?? 0})`
+    return debouncedQ ? `Audit Logs (${data?.total ?? 0} results)` : `Audit Logs (${data?.total ?? 0} total)`
   }, [isAdmin, debouncedQ, data?.total])
 
   if (!isAdmin) {
@@ -90,7 +97,7 @@ function AuditLogsPage() {
 
         <div className="flex flex-wrap items-center gap-3">
           <input
-            value={search.q}
+            value={search.q || ''}
             onChange={(e) => setFilter({ q: e.target.value })}
             placeholder="Search by action, entity, actor..."
             className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:outline-none focus:border-[#F4622A] focus:ring-1 focus:ring-[#F4622A]/20 min-w-[260px]"
@@ -154,7 +161,7 @@ function AuditLogsPage() {
 
           <div className="flex-shrink-0">
             <Pagination
-              page={search.page}
+              page={search.page ?? 1}
               totalPages={data?.totalPages ?? 1}
               total={data?.total ?? 0}
               pageSize={PAGE_SIZE}

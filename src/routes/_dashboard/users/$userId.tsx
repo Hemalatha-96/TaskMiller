@@ -118,7 +118,7 @@ function UserDetailPage() {
     <div className="h-full overflow-y-auto pr-1">
     <div className="max-w-5xl mx-auto space-y-6">
       <div className="flex items-center gap-2 text-sm text-gray-500">
-        <Link to="/users" search={{ q: '', status: '', page: 1 }} className="flex items-center gap-1 hover:text-[#F4622A] transition">
+        <Link to="/users" search={{ q: undefined, status: undefined, page: undefined }} className="flex items-center gap-1 hover:text-[#F4622A] transition">
           <ChevronLeft className="w-4 h-4" />Users
         </Link>
         <span>/</span>
