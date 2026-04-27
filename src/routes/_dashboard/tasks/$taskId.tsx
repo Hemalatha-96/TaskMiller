@@ -1,845 +1,476 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
-import { useState, useRef, useEffect, type ChangeEvent } from 'react'
-import { ChevronLeft, Calendar, Paperclip, MessageSquare, CheckSquare, Trash2, Pencil, Check, X, Plus, Eye, CornerDownRight } from 'lucide-react'
-import { useProject } from '../../../lib/queries/projects.queries'
-import { useTask, useUpdateTaskStatus, useCreateSubTask } from '../../../lib/queries/tasks.queries'
-import { useComments, useAddComment, useEditComment, useDeleteComment } from '../../../lib/queries/comments.queries'
-import { useAttachments, useAddAttachment, useDeleteAttachment } from '../../../lib/queries/attachments.queries'
-import { useOrgMembers } from '../../../lib/queries/orgs.queries'
-import { Avatar, AvatarGroup } from '../../../components/ui/avatar'
-import { TaskPriorityBadge } from '../../../components/tasks/TaskPriorityBadge'
-import { TaskStatusSelect } from '../../../components/tasks/TaskStatusSelect'
-import { LoadingSpinner } from '../../../components/common/LoadingSpinner'
-import { formatDate, timeAgo } from '../../../utils/date'
+import { useState } from 'react'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { ArrowLeft, ChevronDown, Pencil, Plus, X, AlignLeft, Eye } from 'lucide-react'
+import { useTask, useUpdateTaskMutation } from '../../../queries/tasks.queries'
+import { useAttachments } from '../../../queries/attachments.queries'
+import { useProjects } from '../../../queries/projects.queries'
 import { useAuth } from '../../../hooks/useAuth'
-import { useOrgStore } from '../../../store/org.store'
-import { getTaskStatusColor } from '../../../utils/status'
-import { TASK_STATUS_LABELS } from '../../../constants/enums'
-import { cn } from '../../../utils/cn'
-import type { TaskStatus } from '../../../types/task.types'
-import { getAttachmentDownloadUrl } from '../../../lib/api/attachments.api'
-import type { Attachment } from '../../../types/attachment.types'
-import { MAX_UPLOAD_SIZE_BYTES, MAX_UPLOAD_SIZE_ERROR_MESSAGE } from '../../../constants/uploads'
+import StatusBadge from '../../../components/ui/StatusBadge'
+import PriorityBadge from '../../../components/ui/PriorityBadge'
+import AvatarStack from '../../../components/ui/AvatarStack'
+import S3Image from '../../../components/ui/S3Image'
+import CommentsSection from '../../../components/tasks/CommentsSection'
+import AttachmentsSection from '../../../components/tasks/AttachmentsSection'
+import { TaskDetailSkeleton } from '../../../components/ui/Skeleton'
+import ErrorMessage from '../../../components/common/ErrorMessage'
+import Pagination from '../../../components/ui/Pagination'
+import { userColor, toAvatarShape, formatDate } from '../../../lib/utils'
+import type { TaskStatus, Subtask } from '../../../types/task.types'
+import type { ApiError } from '../../../types/api.types'
 
-type MentionUser = { id: string; name: string }
+export const Route = createFileRoute('/_dashboard/tasks/$taskId')({
+  component: TaskViewPage,
+})
 
-function AttachmentImage({ taskId, attachment, onClick }: { taskId: string, attachment: Attachment, onClick: () => void }) {
-  const [url, setUrl] = useState<string | null>(null)
-  const [error, setError] = useState(false)
+type Tab = 'subtasks' | 'assignTo' | 'attachments'
 
-  useEffect(() => {
-    let mounted = true
-    getAttachmentDownloadUrl(taskId, attachment.id)
-      .then(u => { if (mounted) setUrl(u) })
-      .catch(() => { if (mounted) setError(true) })
-    return () => { mounted = false }
-  }, [taskId, attachment.id])
+const allStatusOptions: TaskStatus[] = ['to_do', 'in_progress', 'on_hold', 'completed']
 
-  const isImage = attachment.mimeType?.startsWith('image/') || attachment.fileName?.match(/\.(jpg|jpeg|png|gif|webp)$/i)
+function statusLabel(s: TaskStatus) {
+  return s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
 
-  if (!isImage || error) {
-    return (
-      <div onClick={onClick} className="w-12 h-12 rounded bg-gray-100 flex items-center justify-center cursor-pointer flex-shrink-0 border border-gray-200 hover:bg-gray-200 transition">
-        <Paperclip className="w-5 h-5 text-gray-400" />
-      </div>
-    )
+const statusButtonClass: Record<string, string> = {
+  to_do: 'border-purple-300 text-purple-600 bg-white hover:bg-purple-50',
+  in_progress: 'border-blue-300   text-blue-600   bg-white hover:bg-blue-50',
+  on_hold: 'border-amber-300  text-amber-600  bg-white hover:bg-amber-50',
+  overdue: 'border-red-300    text-red-600    bg-white hover:bg-red-50',
+  completed: 'border-green-300  text-green-600  bg-white hover:bg-green-50',
+}
+
+const statusButtonFallback = 'border-gray-300 text-gray-600 bg-white hover:bg-gray-50'
+
+function allowedStatuses(current: string): TaskStatus[] {
+  return allStatusOptions.filter((s) => {
+    if (s === current) return false
+    if (current === 'in_progress' && s === 'to_do') return false
+    if (current === 'on_hold' && s !== 'in_progress') return false
+    if (current === 'completed' && s === 'to_do') return false
+    if (current === 'overdue' && s !== 'completed') return false
+    return true
+  })
+}
+
+function SubtaskCard({
+  subtask, parentOnHold, onEdit, onView, onStatusChange, isAdmin,
+}: {
+  subtask: Subtask
+  parentOnHold: boolean
+  onEdit: (s: Subtask) => void
+  onView: (s: Subtask) => void
+  onStatusChange: (id: string, status: TaskStatus) => void
+  isAdmin: boolean
+}) {
+  const statusSelectClass: Record<string, string> = {
+    to_do: 'border-purple-300 text-purple-600 bg-purple-50',
+    in_progress: 'border-blue-300   text-blue-600   bg-blue-50',
+    on_hold: 'border-amber-300  text-amber-600  bg-amber-50',
+    overdue: 'border-red-300    text-red-600    bg-red-50',
+    completed: 'border-green-300  text-green-600  bg-green-50',
   }
 
   return (
-    <div onClick={onClick} className="w-12 h-12 rounded overflow-hidden cursor-pointer flex-shrink-0 border border-gray-200 hover:opacity-80 transition group relative bg-gray-100">
-      {url ? (
-        <img src={url} alt={attachment.fileName} className="w-full h-full object-cover" />
-      ) : (
-        <div className="w-full h-full flex items-center justify-center">
-          <LoadingSpinner />
-        </div>
-      )}
-      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-        <Eye className="w-4 h-4 text-white" />
+    <div className="border border-gray-100 rounded-xl p-4 bg-gray-50 space-y-3">
+
+      {/* Title + Priority */}
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm font-semibold text-gray-800 leading-snug">{subtask.title}</p>
+        <PriorityBadge priority={subtask.priority} />
       </div>
+
+      {/* Description */}
+      {subtask.description && (
+        <p className="text-xs text-gray-400 leading-relaxed line-clamp-2">{subtask.description}</p>
+      )}
+
+      {/* Status + Avatars */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {subtask.status === 'completed' ? (
+            <StatusBadge status={subtask.status} />
+          ) : parentOnHold ? (
+            <div title="Task is on hold — subtask status cannot be changed">
+              <StatusBadge status={subtask.status} />
+            </div>
+          ) : (
+            <div className="relative">
+              <select
+                value={subtask.status}
+                onChange={(e) => onStatusChange(subtask.id, e.target.value as TaskStatus)}
+                className={`appearance-none border rounded-full pl-3 pr-6 py-1 text-xs font-medium outline-none cursor-pointer transition-colors ${statusSelectClass[subtask.status] ?? ''}`}
+              >
+                <option value={subtask.status} disabled>{statusLabel(subtask.status)}</option>
+                {allowedStatuses(subtask.status as TaskStatus).map((s) => (
+                  <option key={s} value={s}>{statusLabel(s)}</option>
+                ))}
+              </select>
+              <ChevronDown size={11} className="absolute right-1.5 top-1.5 pointer-events-none opacity-60" />
+            </div>
+          )}
+        </div>
+        <AvatarStack avatars={toAvatarShape(subtask.assignees)} max={4} size="sm" />
+      </div>
+
+      {/* Due Date + Actions */}
+      <div className="flex items-end justify-between pt-0.5">
+        <div>
+          <p className="text-xs text-gray-400">Due Date</p>
+          <p className="text-xs font-medium text-gray-700 mt-0.5">
+            {subtask.dueDate ? formatDate(subtask.dueDate) : '—'}
+          </p>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => onView(subtask)}
+            className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-400 hover:text-gray-600 transition-colors"
+            title="View subtask"
+          >
+            <Eye size={12} />
+          </button>
+          {isAdmin && subtask.status !== 'completed' && (
+            <button
+              onClick={() => onEdit(subtask)}
+              className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-400 hover:text-gray-600 transition-colors"
+              title="Edit subtask"
+            >
+              <Pencil size={12} />
+            </button>
+          )}
+        </div>
+      </div>
+
     </div>
   )
 }
 
-function getMentionInfo(value: string, cursor: number): { query: string; start: number } | null {
-  const textBefore = value.slice(0, cursor)
-  const match = textBefore.match(/(?:^|\s)@([a-zA-Z0-9_ -]*)$/)
-  if (!match) return null
-  const matchedText = match[0]
-  const atIndex = matchedText.indexOf('@')
-  return { query: match[1], start: cursor - matchedText.length + atIndex }
-}
-
-function renderMentions(body: string, users: MentionUser[]) {
-  const parts = body.split(/(@[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/g)
-  return parts.map((part, i) => {
-    if (/^@[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(part)) {
-      const user = users.find((u) => u.id === part.slice(1))
-      return (
-        <span key={i} className="text-[#F4622A] font-medium">
-          @{user?.name ?? part.slice(1, 13) + '…'}
-        </span>
-      )
-    }
-    return <span key={i}>{part}</span>
-  })
-}
-
-export const Route = createFileRoute('/_dashboard/tasks/$taskId')({
-  component: TaskDetailPage,
-})
-
-function TaskDetailPage() {
+function TaskViewPage() {
   const { taskId } = Route.useParams()
-  const { data: task, isLoading, error } = useTask(taskId)
-  const updateStatus = useUpdateTaskStatus()
-  const { data: comments = [], isLoading: commentsLoading } = useComments(taskId)
-  const addComment = useAddComment(taskId)
-  const editComment = useEditComment(taskId)
-  const deleteComment = useDeleteComment(taskId)
-  const { data: attachments, isLoading: attachmentsLoading } = useAttachments(taskId)
-  const addAttachment = useAddAttachment(taskId)
-  const deleteAttachment = useDeleteAttachment(taskId)
-  const { user: currentUser, orgId, isSuperAdmin } = useAuth()
-  const { activeOrgId } = useOrgStore()
-  const effectiveOrgId = isSuperAdmin ? (activeOrgId ?? undefined) : (orgId ?? undefined)
-  const { data: projectData } = useProject(task?.projectId ?? '')
-  const mentionOrgId = projectData?.orgId || effectiveOrgId || ''
-  const { data: orgMembers = [], isLoading: membersLoading } = useOrgMembers(mentionOrgId)
-  const orgUsers: MentionUser[] = orgMembers.map((m) => ({ id: m.userId, name: m.name }))
+  const navigate = useNavigate()
+  const { isAdmin, isDeveloper, user } = useAuth()
 
-  const createSubTask = useCreateSubTask(taskId)
+  const [activeTab, setActiveTab] = useState<Tab>('subtasks')
+  const [statusOpen, setStatusOpen] = useState(false)
+  const [statusError, setStatusError] = useState<string | null>(null)
+  const [assigneesPage, setAssigneesPage] = useState(1)
+  const [assigneesLimit, setAssigneesLimit] = useState(10)
 
-  const [commentBody, setCommentBody] = useState('')
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editBody, setEditBody] = useState('')
-  const editInputRef = useRef<HTMLTextAreaElement>(null)
-  const [replyingToId, setReplyingToId] = useState<string | null>(null)
-  const [replyBody, setReplyBody] = useState('')
-  const [attachmentError, setAttachmentError] = useState('')
-  const attachmentInputRef = useRef<HTMLInputElement>(null)
-  const commentInputRef = useRef<HTMLInputElement>(null)
-  const replyInputRef = useRef<HTMLInputElement>(null)
-  const [mentionQuery, setMentionQuery] = useState<string | null>(null)
-  const [mentionAnchor, setMentionAnchor] = useState(0)
-  const [replyMentionQuery, setReplyMentionQuery] = useState<string | null>(null)
-  const [replyMentionAnchor, setReplyMentionAnchor] = useState(0)
+  const { data: task, isLoading, isError, error } = useTask(taskId)
+  const { data: projectsData } = useProjects({ limit: 100 })
+  const { data: attachmentsData } = useAttachments(taskId)
+  const { mutate: updateTask } = useUpdateTaskMutation()
 
-  const [showSubtaskForm, setShowSubtaskForm] = useState(false)
-  const [subtaskRows, setSubtaskRows] = useState([{ title: '', priority: 'medium', status: 'to_do', dueDate: '' }])
-  const [subtaskError, setSubtaskError] = useState('')
+  const projects = projectsData?.projects ?? []
+  const proj = projects.find((p) => p.id === task?.projectId)
+  const visibleSubtasks = task
+    ? isDeveloper && user
+      ? task.subtasks.filter((s) => s.assignees.some((a) => a.id === user.id))
+      : task.subtasks
+    : []
+  const attachmentCount = attachmentsData?.attachments.length ?? 0
 
-  const addSubtaskRow = () =>
-    setSubtaskRows((rows) => [...rows, { title: '', priority: 'medium', status: 'to_do', dueDate: '' }])
-
-  const removeSubtaskRow = (i: number) =>
-    setSubtaskRows((rows) => rows.filter((_, idx) => idx !== i))
-
-  const updateSubtaskRow = (i: number, field: string, value: string) =>
-    setSubtaskRows((rows) => rows.map((r, idx) => (idx === i ? { ...r, [field]: value } : r)))
-
-  const handleSubmitSubtasks = async () => {
-    const valid = subtaskRows.filter((r) => r.title.trim())
-    if (!valid.length) { setSubtaskError('Add at least one subtask title.'); return }
-    setSubtaskError('')
-    try {
-      await Promise.all(valid.map((r) => createSubTask.mutateAsync({
-        title: r.title.trim(),
-        priority: r.priority as any,
-        status: r.status as any,
-        dueDate: r.dueDate || undefined,
-        projectId: task?.projectId,
-      })))
-      setSubtaskRows([{ title: '', priority: 'medium', status: 'to_do', dueDate: '' }])
-      setShowSubtaskForm(false)
-    } catch (err: any) {
-      setSubtaskError(err?.message ?? 'Failed to create subtasks.')
-    }
-  }
-
-  const handleCommentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value
-    setCommentBody(val)
-    const cursor = e.target.selectionStart ?? val.length
-    const info = getMentionInfo(val, cursor)
-    if (info) { setMentionQuery(info.query); setMentionAnchor(info.start) }
-    else setMentionQuery(null)
-  }
-
-  const handleSelectMention = (user: MentionUser) => {
-    const before = commentBody.slice(0, mentionAnchor)
-    const after = commentBody.slice(mentionAnchor + 1 + (mentionQuery?.length ?? 0))
-    setCommentBody(`${before}@${user.id} ${after}`)
-    setMentionQuery(null)
-    setTimeout(() => commentInputRef.current?.focus(), 0)
-  }
-
-  const handleReplyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value
-    setReplyBody(val)
-    const cursor = e.target.selectionStart ?? val.length
-    const info = getMentionInfo(val, cursor)
-    if (info) { setReplyMentionQuery(info.query); setReplyMentionAnchor(info.start) }
-    else setReplyMentionQuery(null)
-  }
-
-  const handleSelectReplyMention = (user: MentionUser) => {
-    const before = replyBody.slice(0, replyMentionAnchor)
-    const after = replyBody.slice(replyMentionAnchor + 1 + (replyMentionQuery?.length ?? 0))
-    setReplyBody(`${before}@${user.id} ${after}`)
-    setReplyMentionQuery(null)
-    setTimeout(() => replyInputRef.current?.focus(), 0)
-  }
-
-  const mentionUsers = mentionQuery !== null
-    ? orgUsers.filter((u) => u.name.toLowerCase().includes(mentionQuery.toLowerCase())).slice(0, 8)
+  const tabs: { key: Tab; label: string; count: number }[] = task
+    ? [
+      { key: 'subtasks', label: 'Subtasks', count: visibleSubtasks.length },
+      { key: 'assignTo', label: 'Assign To', count: task.assignees.length },
+      { key: 'attachments', label: 'Attachments', count: attachmentCount },
+    ]
     : []
 
-  const replyMentionUsers = replyMentionQuery !== null
-    ? orgUsers.filter((u) => u.name.toLowerCase().includes(replyMentionQuery.toLowerCase())).slice(0, 8)
-    : []
-
-  const handleAddComment = async () => {
-    const body = commentBody.trim()
-    if (!body) return
-    await addComment.mutateAsync({ body })
-    setCommentBody('')
-    setMentionQuery(null)
-  }
-
-  const handleReply = async (parentCommentId: string) => {
-    const body = replyBody.trim()
-    if (!body) return
-    await addComment.mutateAsync({ body, parentCommentId })
-    setReplyBody('')
-    setReplyingToId(null)
-    setReplyMentionQuery(null)
-  }
-
-  const startEdit = (id: string, body: string) => {
-    setEditingId(id)
-    setEditBody(body)
-    setTimeout(() => editInputRef.current?.focus(), 50)
-  }
-
-  const handleEdit = async (commentId: string) => {
-    const body = editBody.trim()
-    if (!body) return
-    await editComment.mutateAsync({ commentId, body })
-    setEditingId(null)
-  }
-
-  const handleSelectAttachment = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    setAttachmentError('')
-    if (file.size > MAX_UPLOAD_SIZE_BYTES) {
-      setAttachmentError(MAX_UPLOAD_SIZE_ERROR_MESSAGE)
-      e.target.value = ''
-      return
-    }
-    try {
-      await addAttachment.mutateAsync({ file })
-    } catch (err: any) {
-      setAttachmentError(err?.message ?? 'Failed to upload attachment.')
-    } finally {
-      e.target.value = ''
-    }
-  }
-
-  const handleDownloadAttachment = async (attachmentId: string) => {
-    setAttachmentError('')
-    try {
-      const url = await getAttachmentDownloadUrl(taskId, attachmentId)
-      window.open(url, '_blank', 'noopener,noreferrer')
-    } catch (err: any) {
-      setAttachmentError(err?.message ?? 'Failed to open attachment.')
-    }
-  }
-
-  const handleDeleteAttachment = async (attachmentId: string) => {
-    setAttachmentError('')
-    try {
-      await deleteAttachment.mutateAsync(attachmentId)
-    } catch (err: any) {
-      setAttachmentError(err?.message ?? 'Failed to delete attachment.')
-    }
-  }
-
-  if (isLoading) return <LoadingSpinner />
-  if (error || !task) {
-    return (
-      <div className="flex flex-col items-center justify-center py-24 text-center">
-        <div className="text-7xl font-extrabold text-gray-100 mb-4 select-none">404</div>
-        <h2 className="text-xl font-semibold text-gray-700 mb-2">Task Not Found</h2>
-        <p className="text-sm text-gray-400 mb-6">This task may have been deleted or doesn't exist.</p>
-        <Link
-          to="/tasks"
-          search={{ q: undefined, status: undefined, projectId: undefined, priority: undefined, page: undefined }}
-          className="inline-flex items-center gap-2 bg-[#F4622A] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#E05520] transition"
-        >
-          <ChevronLeft className="w-4 h-4" /> Back to Tasks
-        </Link>
-      </div>
+  const handleStatusChange = (newStatus: TaskStatus) => {
+    setStatusError(null)
+    setStatusOpen(false)
+    updateTask(
+      { id: taskId, body: { status: newStatus } },
+      { onError: (err) => setStatusError((err as ApiError).message ?? 'Failed to update status') },
     )
   }
 
-  return (
-    <div className="h-full min-h-0 overflow-y-auto">
-      <div className="max-w-6xl mx-auto space-y-6 pb-6">
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-sm text-gray-500">
-        <Link to="/tasks" search={{ q: undefined, status: undefined, projectId: undefined, priority: undefined, page: undefined }} className="flex items-center gap-1 hover:text-[#F4622A] transition">
-          <ChevronLeft className="w-4 h-4" />
-          Tasks
-        </Link>
-        <span>/</span>
-        <span className="text-gray-800 font-medium">{task.name}</span>
-      </div>
+  const handleSubtaskStatusChange = (subtaskId: string, newStatus: TaskStatus) => {
+    updateTask({ id: subtaskId, body: { status: newStatus } })
+  }
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Content */}
-        <div className="lg:col-span-2 space-y-5">
-          {/* Task Header */}
-          <div className="bg-white rounded-xl border border-gray-100 p-6">
-            <div className="flex items-start justify-between gap-4 mb-4">
-              <h1 className="text-base font-bold text-gray-900">{task.name}</h1>
+  if (isLoading) return <TaskDetailSkeleton />
+
+  if (isError || !task) return (
+    <div className="py-8">
+      <button onClick={() => navigate({ to: '/tasks', search: {} as any })} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mb-4">
+        <ArrowLeft size={15} /> Back to Tasks
+      </button>
+      <ErrorMessage message={(error as ApiError)?.message ?? 'Task not found'} />
+    </div>
+  )
+
+  const allowed = allowedStatuses(task.status)
+
+  return (
+    <div className="flex flex-col flex-1 gap-4 overflow-hidden">
+
+      {/* Back */}
+      <button
+        onClick={() => navigate({ to: '/tasks', search: {} as any })}
+        className="flex-shrink-0 flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+      >
+        <ArrowLeft size={15} /> Back to Tasks
+      </button>
+
+      <div className="flex flex-1 gap-5 min-h-0">
+
+        {/* ── Left panel ─────────────────────────────────────────────────── */}
+        <div className="flex flex-col flex-1 min-w-0 overflow-hidden bg-white rounded-2xl border border-gray-100">
+
+          {/* Fixed top section */}
+          <div className="flex-shrink-0 p-6 space-y-5">
+
+            {/* Title row */}
+            <div className="flex items-start justify-between gap-4">
+              <h2 className="text-xl font-bold text-gray-800 leading-snug">{task.title}</h2>
               <div className="flex items-center gap-2 flex-shrink-0">
-                <TaskStatusSelect
-                  value={task.status}
-                  onChange={(status: TaskStatus) => updateStatus.mutate({ id: task.id, status })}
-                  dueDate={task.dueDate}
-                />
-                <button className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 transition">
-                  Check Activity
+                {task.status === 'completed' ? (
+                  <StatusBadge status={task.status} />
+                ) : (
+                  <div className="relative">
+                    <button
+                      onClick={() => setStatusOpen(!statusOpen)}
+                      className={`flex items-center gap-2 border-2 rounded-lg px-4 py-1.5 text-sm font-semibold transition-colors ${statusButtonClass[task.status] ?? statusButtonFallback}`}
+                    >
+                      {statusLabel(task.status)}
+                      <ChevronDown size={14} />
+                    </button>
+                    {statusOpen && (
+                      <>
+                        <div className="fixed inset-0 z-[9]" onClick={() => setStatusOpen(false)} />
+                        <div className="absolute right-0 top-9 z-[10] bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden min-w-[140px]">
+                          {allowed.map((s) => (
+                            <button
+                              key={s}
+                              onClick={() => handleStatusChange(s)}
+                              className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-colors hover:bg-gray-50 ${s === task.status ? 'text-orange-500 bg-orange-50' : 'text-gray-700'}`}
+                            >
+                              {statusLabel(s)}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+                {isAdmin && task.status !== 'completed' && (
+                  <button
+                    onClick={() => navigate({ to: '/tasks/$taskId/edit', params: { taskId } })}
+                    className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-400 hover:text-gray-600 transition-colors"
+                    title="Edit task"
+                  >
+                    <Pencil size={14} />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Status error */}
+            {statusError && (
+              <div className="flex items-center justify-between gap-2 bg-red-50 border border-red-200 text-red-600 text-xs px-3 py-2 rounded-lg">
+                <span>{statusError}</span>
+                <button onClick={() => setStatusError(null)} className="text-red-400 hover:text-red-600 transition-colors">
+                  <X size={13} />
                 </button>
               </div>
-            </div>
+            )}
 
-            {/* Meta */}
-            <div className="flex flex-wrap gap-4 text-sm text-gray-500 mb-4">
-              <div className="flex items-center gap-1.5">
-                <span className="text-gray-400">Project:</span>
-                <Link to="/projects/$projectId" params={{ projectId: task.projectId }} className="font-medium text-[#F4622A] hover:underline">{task.projectName}</Link>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Calendar className="w-4 h-4 text-gray-400" />
-                <span>Due: {formatDate(task.dueDate)}</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Paperclip className="w-4 h-4 text-gray-400" />
-                <span>{attachments?.length ?? task.attachments} attachments</span>
-              </div>
-            </div>
-
-            {/* Tags */}
-            <div className="flex flex-wrap gap-2 mb-4">
-              {task.tags.map((tag) => (
-                <span key={tag} className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-50 text-orange-700 border border-orange-100">{tag}</span>
-              ))}
-              <TaskPriorityBadge priority={task.priority} />
-            </div>
-
-            {/* Description */}
+            {/* Project */}
             <div>
-              <h3 className="text-sm font-semibold text-gray-700 mb-2">Description</h3>
-              <p className="text-sm text-gray-600 leading-relaxed">{task.description || 'No description provided.'}</p>
-            </div>
-          </div>
-
-          {/* Subtasks */}
-          <div className="bg-white rounded-xl border border-gray-100 p-6">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                <CheckSquare className="w-4 h-4 text-[#F4622A]" />
-                Subtasks ({task.subtasks.filter((s) => s.completed).length}/{task.subtasks.length})
-              </h3>
-              <button
-                onClick={() => { setShowSubtaskForm((v) => !v); setSubtaskError(''); setSubtaskRows([{ title: '', priority: 'medium', status: 'to_do', dueDate: '' }]) }}
-                className="inline-flex items-center gap-1 text-xs font-medium text-[#F4622A] hover:bg-orange-50 px-2 py-1 rounded-lg transition"
-              >
-                <Plus className="w-3.5 h-3.5" />Add Subtask
-              </button>
+              <p className="text-xs text-gray-400 mb-0.5">Project</p>
+              <p className="text-sm font-bold text-gray-800">{proj?.title ?? '—'}</p>
             </div>
 
-            {task.subtasks.length > 0 && (
-              <div className="space-y-3 mb-4">
-                {task.subtasks.map((sub) => (
-                  <div key={sub.id} className="border border-gray-100 rounded-xl p-4 bg-white hover:shadow-sm transition-shadow">
-                    {/* Card header: title + priority */}
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <h4 className="text-sm font-semibold text-gray-800 leading-snug">{sub.name}</h4>
-                      {sub.priority && <TaskPriorityBadge priority={sub.priority} />}
-                    </div>
+            <hr className="border-gray-300" />
 
-                    {/* Description */}
-                    {sub.description && (
-                      <p className="text-xs text-gray-500 mb-3 line-clamp-2 leading-relaxed">{sub.description}</p>
-                    )}
-
-                    {/* Status + Assignees row */}
-                    <div className="flex items-center justify-between mb-3">
-                      {sub.status && (
-                        <span className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium', getTaskStatusColor(sub.status))}>
-                          <span className="w-1.5 h-1.5 rounded-full bg-current opacity-70" />
-                          {TASK_STATUS_LABELS[sub.status]}
-                        </span>
-                      )}
-                      {sub.assignees && sub.assignees.length > 0 && (
-                        <AvatarGroup names={sub.assignees.map((a) => a.name)} max={4} size="xs" />
-                      )}
-                    </div>
-
-                    {/* Due date + Actions */}
-                    <div className="flex items-center justify-between">
-                      {sub.dueDate ? (
-                        <div>
-                          <p className="text-xs text-gray-400 mb-0.5">Due Date</p>
-                          <p className="text-xs font-medium text-gray-700">{formatDate(sub.dueDate)}</p>
-                        </div>
-                      ) : <div />}
-                      <div className="flex items-center gap-1.5">
-                        <Link
-                          to="/tasks/$taskId"
-                          params={{ taskId: sub.id }}
-                          className="p-1.5 rounded-lg border border-gray-200 text-gray-400 hover:text-[#F4622A] hover:border-orange-200 transition"
-                          title="View subtask"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                        </Link>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+            {/* Description + Created By + Due Date */}
+            <div className="flex gap-6 items-start">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-2">
+                  <AlignLeft size={15} className="text-gray-400" />
+                  <p className="text-sm font-semibold text-gray-700">Description</p>
+                </div>
+                <p className="text-sm text-gray-500 leading-relaxed">
+                  {task.description ?? <span className="italic text-gray-300">No description provided</span>}
+                </p>
               </div>
-            )}
-
-            {task.subtasks.length === 0 && !showSubtaskForm && (
-              <p className="text-sm text-gray-400 mb-2">No subtasks yet.</p>
-            )}
-
-            {/* Dynamic Subtask Form */}
-            {showSubtaskForm && (
-              <div className="border border-gray-200 rounded-xl p-4 mt-2 space-y-3 bg-gray-50">
-                {subtaskError && (
-                  <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{subtaskError}</p>
-                )}
-                {subtaskRows.map((row, i) => (
-                  <div key={i} className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs text-gray-400 w-5 text-right flex-shrink-0">{i + 1}.</span>
-                    <input
-                      value={row.title}
-                      onChange={(e) => updateSubtaskRow(i, 'title', e.target.value)}
-                      placeholder="Subtask title"
-                      className="flex-1 min-w-[160px] rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:outline-none focus:border-[#F4622A] focus:ring-1 focus:ring-[#F4622A]/20 bg-white"
-                    />
-                    <select
-                      value={row.status}
-                      onChange={(e) => updateSubtaskRow(i, 'status', e.target.value)}
-                      className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs bg-white focus:outline-none focus:border-[#F4622A]"
-                    >
-                      <option value="to_do">To Do</option>
-                      <option value="in_progress">In Progress</option>
-                      <option value="on_hold">On Hold</option>
-                      <option value="completed">Completed</option>
-                    </select>
-                    <select
-                      value={row.priority}
-                      onChange={(e) => updateSubtaskRow(i, 'priority', e.target.value)}
-                      className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs bg-white focus:outline-none focus:border-[#F4622A]"
-                    >
-                      <option value="low">Low</option>
-                      <option value="medium">Medium</option>
-                      <option value="high">High</option>
-                      <option value="urgent">Urgent</option>
-                    </select>
-                    <input
-                      type="date"
-                      value={row.dueDate}
-                      onChange={(e) => updateSubtaskRow(i, 'dueDate', e.target.value)}
-                      className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs bg-white focus:outline-none focus:border-[#F4622A]"
-                    />
-                    {subtaskRows.length > 1 && (
-                      <button onClick={() => removeSubtaskRow(i)} className="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition flex-shrink-0">
-                        <X className="w-3.5 h-3.5" />
-                      </button>
+              <div className="flex-shrink-0 space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 relative overflow-hidden ${userColor(task.creator.id)}`}>
+                    {task.creator.avatarUrl ? (
+                      <S3Image storageKey={task.creator.avatarUrl} fallbackInitials={task.creator.name.charAt(0).toUpperCase()} className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-white text-sm font-semibold">{task.creator.name.charAt(0).toUpperCase()}</span>
                     )}
                   </div>
-                ))}
-
-                <div className="flex items-center justify-between pt-1">
-                  <button
-                    onClick={addSubtaskRow}
-                    className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-[#F4622A] transition"
-                  >
-                    <Plus className="w-3.5 h-3.5" />Add another
-                  </button>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => { setShowSubtaskForm(false); setSubtaskError('') }}
-                      className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 transition"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={handleSubmitSubtasks}
-                      disabled={createSubTask.isPending}
-                      className="px-3 py-1.5 text-xs rounded-lg bg-[#F4622A] text-white hover:bg-[#E05520] transition disabled:opacity-60"
-                    >
-                      {createSubTask.isPending ? 'Saving…' : 'Save Subtasks'}
-                    </button>
+                  <div>
+                    <p className="text-xs text-gray-400">Created By</p>
+                    <p className="text-sm font-bold text-gray-800">{task.creator.name}</p>
+                    <p className="text-xs text-gray-400">
+                      {new Date(task.createdAt).toLocaleString('en-GB', {
+                        day: '2-digit', month: '2-digit', year: 'numeric',
+                        hour: '2-digit', minute: '2-digit',
+                      })}
+                    </p>
                   </div>
                 </div>
-              </div>
-            )}
-          </div>
-
-          {/* Attachments */}
-          <div className="bg-white rounded-xl border border-gray-100 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                <Paperclip className="w-4 h-4 text-[#F4622A]" />
-                Attachments ({attachments?.length ?? task.attachments})
-              </h3>
-              <div className="flex items-center gap-2">
-                <input ref={attachmentInputRef} type="file" onChange={handleSelectAttachment} className="hidden" />
-                <button
-                  onClick={() => attachmentInputRef.current?.click()}
-                  disabled={addAttachment.isPending}
-                  className="inline-flex items-center gap-1 text-xs font-medium text-[#F4622A] hover:bg-orange-50 px-2 py-1 rounded-lg transition disabled:opacity-60"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  {addAttachment.isPending ? 'Uploading...' : 'Upload'}
-                </button>
+                <div>
+                  <p className="text-xs text-gray-400 mb-1">Due Date</p>
+                  {task.dueDate ? (
+                    <p className={`text-sm font-semibold px-3 py-1.5 rounded-lg border ${
+                      new Date(task.dueDate) < new Date()
+                        ? 'text-red-500 bg-red-50 border-red-100'
+                        : 'text-gray-700 bg-gray-50 border-gray-200'
+                    }`}>
+                      {formatDate(task.dueDate)}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-gray-400">—</p>
+                  )}
+                </div>
               </div>
             </div>
 
-            {attachmentError && (
-              <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2 mb-3">{attachmentError}</p>
-            )}
+          </div>{/* end fixed top */}
 
-            {attachmentsLoading ? (
-              <LoadingSpinner />
-            ) : (
-              <div className="space-y-2">
-                {!attachments?.length ? (
-                  <p className="text-sm text-gray-400 text-center py-4">No attachments yet.</p>
+          {/* Sticky tabs nav */}
+          <div className="flex-shrink-0 flex gap-0 border-b border-gray-100 px-6">
+            {tabs.map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === tab.key
+                    ? 'border-orange-500 text-orange-500'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {tab.label}
+                <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${
+                  activeTab === tab.key ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-500'
+                }`}>
+                  {String(tab.count).padStart(2, '0')}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {/* Scrollable tab content */}
+          <div className="flex-1 overflow-y-auto px-6 pb-6 pt-4">
+
+            {/* Subtasks tab */}
+            {activeTab === 'subtasks' && (
+              <div className="space-y-3">
+                {isAdmin && task.status !== 'completed' && (
+                  <button
+                    onClick={() => navigate({ to: '/tasks/$taskId/subtask', params: { taskId } })}
+                    className="flex items-center gap-1.5 text-xs font-medium text-orange-500 hover:text-orange-600 border border-orange-200 bg-orange-50 rounded-lg px-3 py-1.5 transition-colors"
+                  >
+                    <Plus size={13} /> Add Subtask
+                  </button>
+                )}
+                {visibleSubtasks.length === 0 ? (
+                  <p className="text-sm text-gray-400 py-6 text-center">No subtasks yet</p>
                 ) : (
-                  attachments.map((a) => (
-                    <div
-                      key={a.id}
-                      className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <AttachmentImage taskId={taskId} attachment={a} onClick={() => handleDownloadAttachment(a.id)} />
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-gray-800 truncate" title={a.fileName}>{a.fileName}</p>
-                          <p className="text-xs text-gray-400">
-                            {(a.uploadedByName ? `${a.uploadedByName} - ` : '') + timeAgo(a.createdAt)}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <button
-                          onClick={() => handleDownloadAttachment(a.id)}
-                          className="p-1.5 rounded-lg border border-gray-200 text-gray-400 hover:text-[#F4622A] hover:border-orange-200 transition"
-                          title="Download"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteAttachment(a.id)}
-                          disabled={deleteAttachment.isPending}
-                          className="p-1.5 rounded-lg border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-200 transition disabled:opacity-60"
-                          title="Delete"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
+                  visibleSubtasks.map((s) => (
+                    <SubtaskCard
+                      key={s.id}
+                      subtask={s}
+                      parentOnHold={task.status === 'on_hold'}
+                      onView={(sub) => navigate({ to: '/tasks/$taskId', params: { taskId: sub.id } })}
+                      onEdit={(sub) => navigate({ to: '/tasks/$taskId/edit', params: { taskId: sub.id } })}
+                      onStatusChange={handleSubtaskStatusChange}
+                      isAdmin={isAdmin}
+                    />
                   ))
                 )}
               </div>
             )}
-          </div>
 
-          {/* Comments */}
-          <div className="bg-white rounded-xl border border-gray-100 p-6">
-            <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
-              <MessageSquare className="w-4 h-4 text-[#F4622A]" />
-              Comments ({comments.length})
-            </h3>
-
-            {commentsLoading ? (
-              <LoadingSpinner />
-            ) : (
-              <div className="space-y-4">
-                {comments.length === 0 && (
-                  <p className="text-sm text-gray-400 text-center py-4">No comments yet. Be the first to comment!</p>
-                )}
-                {comments.filter((c) => !c.parentCommentId).map((comment) => {
-                  const replies = comments.filter((c) => c.parentCommentId === comment.id)
-                  return (
-                    <div key={comment.id} className="space-y-2">
-                      <div className="flex gap-3">
-                        <Avatar name={comment.authorName} src={comment.authorAvatar} size="sm" className="flex-shrink-0 mt-0.5" />
-                        <div className="flex-1">
-                          {editingId === comment.id ? (
-                            <div className="bg-gray-50 rounded-xl px-4 py-3">
-                              <textarea
-                                ref={editInputRef}
-                                value={editBody}
-                                onChange={(e) => setEditBody(e.target.value)}
-                                rows={2}
-                                className="w-full text-sm bg-transparent resize-none focus:outline-none text-gray-800"
-                              />
-                              <div className="flex items-center gap-2 mt-2">
-                                <button
-                                  onClick={() => handleEdit(comment.id)}
-                                  disabled={editComment.isPending}
-                                  className="p-1 rounded text-green-600 hover:bg-green-50 transition"
-                                >
-                                  <Check className="w-3.5 h-3.5" />
-                                </button>
-                                <button onClick={() => setEditingId(null)} className="p-1 rounded text-gray-400 hover:bg-gray-100 transition">
-                                  <X className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="bg-gray-50 rounded-xl px-4 py-3">
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="text-sm font-semibold text-gray-800">{comment.authorName}</span>
-                                <div className="flex items-center gap-1">
-                                  <span className="text-xs text-gray-400">{timeAgo(comment.createdAt)}</span>
-                                  <button
-                                    onClick={() => { setReplyingToId(replyingToId === comment.id ? null : comment.id); setReplyBody('') }}
-                                    className="p-1 rounded text-gray-400 hover:text-[#F4622A] hover:bg-orange-50 transition"
-                                    title="Reply"
-                                  >
-                                    <CornerDownRight className="w-3 h-3" />
-                                  </button>
-                                  {currentUser?.id === comment.authorId && (
-                                    <>
-                                      <button onClick={() => startEdit(comment.id, comment.body)} className="p-1 rounded text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition">
-                                        <Pencil className="w-3 h-3" />
-                                      </button>
-                                      <button
-                                        onClick={() => deleteComment.mutate(comment.id)}
-                                        disabled={deleteComment.isPending}
-                                        className="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition"
-                                      >
-                                        <Trash2 className="w-3 h-3" />
-                                      </button>
-                                    </>
-                                  )}
-                                </div>
-                              </div>
-                              <p className="text-sm text-gray-600">{renderMentions(comment.body, orgUsers)}</p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Inline reply input */}
-                      {replyingToId === comment.id && (
-                        <div className="ml-10 flex gap-2">
-                          <Avatar name={currentUser?.name ?? 'You'} size="xs" className="flex-shrink-0 mt-1" />
-                          <div className="flex-1 flex gap-2">
-                            <div className="flex-1 relative">
-                              <input
-                                ref={replyInputRef}
-                                autoFocus
-                                value={replyBody}
-                                onChange={handleReplyChange}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter' && !e.shiftKey && replyMentionQuery === null) { e.preventDefault(); handleReply(comment.id) }
-                                  if (e.key === 'Escape') { if (replyMentionQuery !== null) setReplyMentionQuery(null); else { setReplyingToId(null); setReplyBody('') } }
-                                }}
-                                placeholder={`Reply to ${comment.authorName}... (@ to mention)`}
-                                className="w-full rounded-xl border border-gray-200 px-3 py-1.5 text-sm focus:outline-none focus:border-[#F4622A]"
-                              />
-                              {replyMentionQuery !== null && (
-                                <div className="absolute bottom-full left-0 mb-1 w-56 bg-white border border-gray-200 rounded-xl shadow-lg z-50 py-1 max-h-40 overflow-y-auto">
-                                  {membersLoading ? (
-                                    <div className="px-3 py-2 text-xs text-gray-500 text-center">Loading users...</div>
-                                  ) : replyMentionUsers.length > 0 ? replyMentionUsers.map((user) => (
-                                    <button
-                                      key={user.id}
-                                      onMouseDown={(e) => { e.preventDefault(); handleSelectReplyMention(user) }}
-                                      className="w-full text-left px-3 py-1.5 hover:bg-orange-50 flex items-center gap-2 transition-colors"
-                                    >
-                                      <Avatar name={user.name} size="xs" />
-                                      <span className="text-xs text-gray-800">{user.name}</span>
-                                    </button>
-                                  )) : (
-                                    <div className="px-3 py-2 text-xs text-gray-500 text-center">No users found</div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                            <button
-                              onClick={() => handleReply(comment.id)}
-                              disabled={addComment.isPending || !replyBody.trim()}
-                              className="px-3 py-1.5 rounded-xl bg-[#F4622A] text-white text-xs hover:bg-[#E05520] transition disabled:opacity-50"
-                            >
-                              Reply
-                            </button>
-                            <button
-                              onClick={() => { setReplyingToId(null); setReplyBody(''); setReplyMentionQuery(null) }}
-                              className="px-3 py-1.5 rounded-xl border border-gray-200 text-xs text-gray-500 hover:bg-gray-50 transition"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Nested replies */}
-                      {replies.length > 0 && (
-                        <div className="ml-10 space-y-2">
-                          {replies.map((reply) => (
-                            <div key={reply.id} className="flex gap-3">
-                              <Avatar name={reply.authorName} src={reply.authorAvatar} size="xs" className="flex-shrink-0 mt-0.5" />
-                              <div className="flex-1">
-                                {editingId === reply.id ? (
-                                  <div className="bg-gray-50 rounded-xl px-3 py-2">
-                                    <textarea
-                                      ref={editingId === reply.id ? editInputRef : undefined}
-                                      value={editBody}
-                                      onChange={(e) => setEditBody(e.target.value)}
-                                      rows={2}
-                                      className="w-full text-sm bg-transparent resize-none focus:outline-none text-gray-800"
-                                    />
-                                    <div className="flex items-center gap-2 mt-1">
-                                      <button onClick={() => handleEdit(reply.id)} disabled={editComment.isPending} className="p-1 rounded text-green-600 hover:bg-green-50 transition"><Check className="w-3.5 h-3.5" /></button>
-                                      <button onClick={() => setEditingId(null)} className="p-1 rounded text-gray-400 hover:bg-gray-100 transition"><X className="w-3.5 h-3.5" /></button>
-                                    </div>
+            {/* Assign To tab */}
+            {activeTab === 'assignTo' && (
+              <div className="flex flex-col h-full overflow-hidden -mx-6 px-6">
+                <div className="flex-1 overflow-y-auto min-h-0">
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0 z-20">
+                      <tr className="text-xs text-gray-600 font-semibold">
+                        <th className="px-4 py-2.5 text-left bg-[#ccfbf1]">S No</th>
+                        <th className="px-4 py-2.5 text-left bg-[#ccfbf1]">Name</th>
+                        <th className="px-4 py-2.5 text-left bg-[#ccfbf1]">Email</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {task.assignees.length === 0 ? (
+                        <tr>
+                          <td colSpan={3} className="px-4 py-6 text-center text-sm text-gray-400">No assignees</td>
+                        </tr>
+                      ) : (
+                        (() => {
+                          const start = (assigneesPage - 1) * assigneesLimit
+                          const paged = task.assignees.slice(start, start + assigneesLimit)
+                          return paged.map((a, i) => (
+                            <tr key={a.id} className="hover:bg-gray-50 transition-colors">
+                              <td className="px-4 py-2.5 text-xs text-gray-400">{String(start + i + 1).padStart(2, '0')}</td>
+                              <td className="px-4 py-2.5">
+                                <div className="flex items-center gap-2.5">
+                                  <div className={`w-7 h-7 rounded-full ${userColor(a.id)} flex items-center justify-center relative overflow-hidden`}>
+                                    {a.avatarUrl ? (
+                                      <S3Image storageKey={a.avatarUrl} fallbackInitials={a.name.charAt(0).toUpperCase()} className="w-full h-full object-cover" />
+                                    ) : (
+                                      <span className="text-white text-xs font-semibold">{a.name.charAt(0).toUpperCase()}</span>
+                                    )}
                                   </div>
-                                ) : (
-                                  <div className="bg-blue-50/50 rounded-xl px-3 py-2">
-                                    <div className="flex items-center justify-between mb-1">
-                                      <span className="text-xs font-semibold text-gray-800">{reply.authorName}</span>
-                                      <div className="flex items-center gap-1">
-                                        <span className="text-xs text-gray-400">{timeAgo(reply.createdAt)}</span>
-                                        {currentUser?.id === reply.authorId && (
-                                          <>
-                                            <button onClick={() => startEdit(reply.id, reply.body)} className="p-1 rounded text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition"><Pencil className="w-3 h-3" /></button>
-                                            <button onClick={() => deleteComment.mutate(reply.id)} disabled={deleteComment.isPending} className="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition"><Trash2 className="w-3 h-3" /></button>
-                                          </>
-                                        )}
-                                      </div>
-                                    </div>
-                                    <p className="text-xs text-gray-600">{renderMentions(reply.body, orgUsers)}</p>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
+                                  <span className="font-medium text-gray-700">{a.name}</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-2.5 text-xs text-gray-400">{a.email}</td>
+                            </tr>
+                          ))
+                        })()
                       )}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-
-            {/* Add comment */}
-            <div className="mt-4 flex gap-3">
-              <Avatar name={currentUser?.name ?? 'You'} size="sm" />
-              <div className="flex-1 flex gap-2">
-                <div className="flex-1 relative">
-                  <input
-                    ref={commentInputRef}
-                    value={commentBody}
-                    onChange={handleCommentChange}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey && mentionQuery === null) { e.preventDefault(); handleAddComment() }
-                      if (e.key === 'Escape') setMentionQuery(null)
-                    }}
-                    placeholder="Add a comment... (type @ to mention)"
-                    className="w-full rounded-xl border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:border-[#F4622A]"
-                  />
-                  {mentionQuery !== null && (
-                    <div className="absolute bottom-full left-0 mb-1 w-64 bg-white border border-gray-200 rounded-xl shadow-lg z-50 py-1 max-h-48 overflow-y-auto">
-                      {membersLoading ? (
-                        <div className="px-4 py-3 text-sm text-gray-500 text-center">Loading users...</div>
-                      ) : mentionUsers.length > 0 ? mentionUsers.map((user) => (
-                        <button
-                          key={user.id}
-                          onMouseDown={(e) => { e.preventDefault(); handleSelectMention(user) }}
-                          className="w-full text-left px-3 py-2 hover:bg-orange-50 flex items-center gap-2 transition-colors"
-                        >
-                          <Avatar name={user.name} size="xs" />
-                          <span className="text-sm text-gray-800">{user.name}</span>
-                        </button>
-                      )) : (
-                        <div className="px-4 py-3 text-sm text-gray-500 text-center">No users found</div>
-                      )}
-                    </div>
-                  )}
+                    </tbody>
+                  </table>
                 </div>
-                <button
-                  onClick={handleAddComment}
-                  disabled={addComment.isPending || !commentBody.trim()}
-                  className="p-2 rounded-xl bg-[#F4622A] text-white hover:bg-[#E05520] transition disabled:opacity-50"
-                >
-                  <MessageSquare className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
 
-        {/* Sidebar */}
-        <div className="space-y-5">
-          {/* Assignees */}
-          <div className="bg-white rounded-xl border border-gray-100 p-5">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Assignees</h3>
-            {task.assignees.length === 0 ? (
-              <p className="text-sm text-gray-400">No assignees</p>
-            ) : (
-              <div className="space-y-2">
-                {task.assignees.map((assignee) => (
-                  <div key={assignee.id} className="flex items-center justify-between py-1.5">
-                    <div className="flex items-center gap-2.5">
-                      <Avatar name={assignee.name} size="sm" />
-                      <span className="text-sm font-medium text-gray-800">{assignee.name}</span>
-                    </div>
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${assignee.role === 'Primary' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-600'}`}>
-                      {assignee.role}
-                    </span>
-                  </div>
-                ))}
+                {task.assignees.length > 0 && (
+                  <Pagination
+                    page={assigneesPage}
+                    totalPages={Math.ceil(task.assignees.length / assigneesLimit)}
+                    totalRecords={task.assignees.length}
+                    startEntry={(assigneesPage - 1) * assigneesLimit + 1}
+                    endEntry={Math.min(assigneesPage * assigneesLimit, task.assignees.length)}
+                    limit={assigneesLimit}
+                    hasPrevPage={assigneesPage > 1}
+                    hasNextPage={assigneesPage < Math.ceil(task.assignees.length / assigneesLimit)}
+                    onPageChange={setAssigneesPage}
+                    onLimitChange={(l) => { setAssigneesLimit(l); setAssigneesPage(1) }}
+                    className="flex-shrink-0 flex items-center justify-between px-6 py-3 bg-white border-t border-gray-100"
+                  />
+                )}
               </div>
             )}
-          </div>
 
-          {/* Task Info */}
-          <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
-            <h3 className="text-sm font-semibold text-gray-700">Task Details</h3>
-            <div className="space-y-3 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-500">Created By</span>
-                <span className="font-medium text-gray-800">{task.createdByName}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Created At</span>
-                <span className="font-medium text-gray-800">{formatDate(task.createdAt)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Due Date</span>
-                <span className="font-medium text-gray-800">{formatDate(task.dueDate)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Priority</span>
-                <TaskPriorityBadge priority={task.priority} />
-              </div>
-            </div>
-          </div>
+            {/* Attachments tab */}
+            {activeTab === 'attachments' && (
+              <AttachmentsSection taskId={taskId} />
+            )}
+
+          </div>{/* end scrollable content */}
+
+        </div>{/* end left panel */}
+
+        {/* ── Right panel — Comments ──────────────────────────────────────── */}
+        <div className="w-96 flex-shrink-0">
+          <CommentsSection
+            taskId={taskId}
+            userId={user?.id ?? ''}
+            userName={user?.name ?? ''}
+            avatarUrl={user?.avatarUrl ?? null}
+            assignees={task.assignees.map(a => ({ id: a.id, name: a.name, email: a.email, avatarUrl: a.avatarUrl }))}
+          />
         </div>
-      </div>
+
       </div>
     </div>
   )

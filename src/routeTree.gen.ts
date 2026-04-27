@@ -9,30 +9,31 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as AboutRouteImport } from './routes/about'
 import { Route as DashboardRouteImport } from './routes/_dashboard'
 import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DashboardProfileRouteImport } from './routes/_dashboard/profile'
 import { Route as DashboardDashboardRouteImport } from './routes/_dashboard/dashboard'
-import { Route as AuthRegisterRouteImport } from './routes/_auth/register'
+import { Route as DashboardAuditLogsRouteImport } from './routes/_dashboard/audit-logs'
 import { Route as AuthOtpRouteImport } from './routes/_auth/otp'
 import { Route as AuthLoginRouteImport } from './routes/_auth/login'
 import { Route as DashboardUsersIndexRouteImport } from './routes/_dashboard/users/index'
 import { Route as DashboardTasksIndexRouteImport } from './routes/_dashboard/tasks/index'
 import { Route as DashboardProjectsIndexRouteImport } from './routes/_dashboard/projects/index'
-import { Route as DashboardOrgsIndexRouteImport } from './routes/_dashboard/orgs/index'
-import { Route as DashboardAuditLogsIndexRouteImport } from './routes/_dashboard/audit-logs/index'
+import { Route as DashboardOrganizationsIndexRouteImport } from './routes/_dashboard/organizations/index'
+import { Route as DashboardUsersNewRouteImport } from './routes/_dashboard/users/new'
 import { Route as DashboardUsersUserIdRouteImport } from './routes/_dashboard/users/$userId'
+import { Route as DashboardTasksNewRouteImport } from './routes/_dashboard/tasks/new'
 import { Route as DashboardTasksTaskIdRouteImport } from './routes/_dashboard/tasks/$taskId'
+import { Route as DashboardProjectsNewRouteImport } from './routes/_dashboard/projects/new'
 import { Route as DashboardProjectsProjectIdRouteImport } from './routes/_dashboard/projects/$projectId'
-import { Route as DashboardOrgsOrgIdRouteImport } from './routes/_dashboard/orgs/$orgId'
+import { Route as DashboardOrganizationsNewRouteImport } from './routes/_dashboard/organizations/new'
+import { Route as DashboardOrganizationsOrgIdRouteImport } from './routes/_dashboard/organizations/$orgId'
+import { Route as DashboardTasksTaskIdSubtaskRouteImport } from './routes/_dashboard/tasks/$taskId_/subtask'
+import { Route as DashboardTasksTaskIdEditRouteImport } from './routes/_dashboard/tasks/$taskId_/edit'
+import { Route as DashboardProjectsProjectIdEditRouteImport } from './routes/_dashboard/projects/$projectId_/edit'
+import { Route as DashboardOrganizationsOrgIdAddMemberRouteImport } from './routes/_dashboard/organizations/$orgId_/add-member'
 
-const AboutRoute = AboutRouteImport.update({
-  id: '/about',
-  path: '/about',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const DashboardRoute = DashboardRouteImport.update({
   id: '/_dashboard',
   getParentRoute: () => rootRouteImport,
@@ -56,10 +57,10 @@ const DashboardDashboardRoute = DashboardDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => DashboardRoute,
 } as any)
-const AuthRegisterRoute = AuthRegisterRouteImport.update({
-  id: '/register',
-  path: '/register',
-  getParentRoute: () => AuthRoute,
+const DashboardAuditLogsRoute = DashboardAuditLogsRouteImport.update({
+  id: '/audit-logs',
+  path: '/audit-logs',
+  getParentRoute: () => DashboardRoute,
 } as any)
 const AuthOtpRoute = AuthOtpRouteImport.update({
   id: '/otp',
@@ -86,14 +87,15 @@ const DashboardProjectsIndexRoute = DashboardProjectsIndexRouteImport.update({
   path: '/projects/',
   getParentRoute: () => DashboardRoute,
 } as any)
-const DashboardOrgsIndexRoute = DashboardOrgsIndexRouteImport.update({
-  id: '/orgs/',
-  path: '/orgs/',
-  getParentRoute: () => DashboardRoute,
-} as any)
-const DashboardAuditLogsIndexRoute = DashboardAuditLogsIndexRouteImport.update({
-  id: '/audit-logs/',
-  path: '/audit-logs/',
+const DashboardOrganizationsIndexRoute =
+  DashboardOrganizationsIndexRouteImport.update({
+    id: '/organizations/',
+    path: '/organizations/',
+    getParentRoute: () => DashboardRoute,
+  } as any)
+const DashboardUsersNewRoute = DashboardUsersNewRouteImport.update({
+  id: '/users/new',
+  path: '/users/new',
   getParentRoute: () => DashboardRoute,
 } as any)
 const DashboardUsersUserIdRoute = DashboardUsersUserIdRouteImport.update({
@@ -101,9 +103,19 @@ const DashboardUsersUserIdRoute = DashboardUsersUserIdRouteImport.update({
   path: '/users/$userId',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardTasksNewRoute = DashboardTasksNewRouteImport.update({
+  id: '/tasks/new',
+  path: '/tasks/new',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardTasksTaskIdRoute = DashboardTasksTaskIdRouteImport.update({
   id: '/tasks/$taskId',
   path: '/tasks/$taskId',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardProjectsNewRoute = DashboardProjectsNewRouteImport.update({
+  id: '/projects/new',
+  path: '/projects/new',
   getParentRoute: () => DashboardRoute,
 } as any)
 const DashboardProjectsProjectIdRoute =
@@ -112,144 +124,203 @@ const DashboardProjectsProjectIdRoute =
     path: '/projects/$projectId',
     getParentRoute: () => DashboardRoute,
   } as any)
-const DashboardOrgsOrgIdRoute = DashboardOrgsOrgIdRouteImport.update({
-  id: '/orgs/$orgId',
-  path: '/orgs/$orgId',
-  getParentRoute: () => DashboardRoute,
-} as any)
+const DashboardOrganizationsNewRoute =
+  DashboardOrganizationsNewRouteImport.update({
+    id: '/organizations/new',
+    path: '/organizations/new',
+    getParentRoute: () => DashboardRoute,
+  } as any)
+const DashboardOrganizationsOrgIdRoute =
+  DashboardOrganizationsOrgIdRouteImport.update({
+    id: '/organizations/$orgId',
+    path: '/organizations/$orgId',
+    getParentRoute: () => DashboardRoute,
+  } as any)
+const DashboardTasksTaskIdSubtaskRoute =
+  DashboardTasksTaskIdSubtaskRouteImport.update({
+    id: '/tasks/$taskId_/subtask',
+    path: '/tasks/$taskId/subtask',
+    getParentRoute: () => DashboardRoute,
+  } as any)
+const DashboardTasksTaskIdEditRoute =
+  DashboardTasksTaskIdEditRouteImport.update({
+    id: '/tasks/$taskId_/edit',
+    path: '/tasks/$taskId/edit',
+    getParentRoute: () => DashboardRoute,
+  } as any)
+const DashboardProjectsProjectIdEditRoute =
+  DashboardProjectsProjectIdEditRouteImport.update({
+    id: '/projects/$projectId_/edit',
+    path: '/projects/$projectId/edit',
+    getParentRoute: () => DashboardRoute,
+  } as any)
+const DashboardOrganizationsOrgIdAddMemberRoute =
+  DashboardOrganizationsOrgIdAddMemberRouteImport.update({
+    id: '/organizations/$orgId_/add-member',
+    path: '/organizations/$orgId/add-member',
+    getParentRoute: () => DashboardRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/about': typeof AboutRoute
   '/login': typeof AuthLoginRoute
   '/otp': typeof AuthOtpRoute
-  '/register': typeof AuthRegisterRoute
+  '/audit-logs': typeof DashboardAuditLogsRoute
   '/dashboard': typeof DashboardDashboardRoute
   '/profile': typeof DashboardProfileRoute
-  '/orgs/$orgId': typeof DashboardOrgsOrgIdRoute
+  '/organizations/$orgId': typeof DashboardOrganizationsOrgIdRoute
+  '/organizations/new': typeof DashboardOrganizationsNewRoute
   '/projects/$projectId': typeof DashboardProjectsProjectIdRoute
+  '/projects/new': typeof DashboardProjectsNewRoute
   '/tasks/$taskId': typeof DashboardTasksTaskIdRoute
+  '/tasks/new': typeof DashboardTasksNewRoute
   '/users/$userId': typeof DashboardUsersUserIdRoute
-  '/audit-logs/': typeof DashboardAuditLogsIndexRoute
-  '/orgs/': typeof DashboardOrgsIndexRoute
+  '/users/new': typeof DashboardUsersNewRoute
+  '/organizations/': typeof DashboardOrganizationsIndexRoute
   '/projects/': typeof DashboardProjectsIndexRoute
   '/tasks/': typeof DashboardTasksIndexRoute
   '/users/': typeof DashboardUsersIndexRoute
+  '/organizations/$orgId/add-member': typeof DashboardOrganizationsOrgIdAddMemberRoute
+  '/projects/$projectId/edit': typeof DashboardProjectsProjectIdEditRoute
+  '/tasks/$taskId/edit': typeof DashboardTasksTaskIdEditRoute
+  '/tasks/$taskId/subtask': typeof DashboardTasksTaskIdSubtaskRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/about': typeof AboutRoute
   '/login': typeof AuthLoginRoute
   '/otp': typeof AuthOtpRoute
-  '/register': typeof AuthRegisterRoute
+  '/audit-logs': typeof DashboardAuditLogsRoute
   '/dashboard': typeof DashboardDashboardRoute
   '/profile': typeof DashboardProfileRoute
-  '/orgs/$orgId': typeof DashboardOrgsOrgIdRoute
+  '/organizations/$orgId': typeof DashboardOrganizationsOrgIdRoute
+  '/organizations/new': typeof DashboardOrganizationsNewRoute
   '/projects/$projectId': typeof DashboardProjectsProjectIdRoute
+  '/projects/new': typeof DashboardProjectsNewRoute
   '/tasks/$taskId': typeof DashboardTasksTaskIdRoute
+  '/tasks/new': typeof DashboardTasksNewRoute
   '/users/$userId': typeof DashboardUsersUserIdRoute
-  '/audit-logs': typeof DashboardAuditLogsIndexRoute
-  '/orgs': typeof DashboardOrgsIndexRoute
+  '/users/new': typeof DashboardUsersNewRoute
+  '/organizations': typeof DashboardOrganizationsIndexRoute
   '/projects': typeof DashboardProjectsIndexRoute
   '/tasks': typeof DashboardTasksIndexRoute
   '/users': typeof DashboardUsersIndexRoute
+  '/organizations/$orgId/add-member': typeof DashboardOrganizationsOrgIdAddMemberRoute
+  '/projects/$projectId/edit': typeof DashboardProjectsProjectIdEditRoute
+  '/tasks/$taskId/edit': typeof DashboardTasksTaskIdEditRoute
+  '/tasks/$taskId/subtask': typeof DashboardTasksTaskIdSubtaskRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_auth': typeof AuthRouteWithChildren
   '/_dashboard': typeof DashboardRouteWithChildren
-  '/about': typeof AboutRoute
   '/_auth/login': typeof AuthLoginRoute
   '/_auth/otp': typeof AuthOtpRoute
-  '/_auth/register': typeof AuthRegisterRoute
+  '/_dashboard/audit-logs': typeof DashboardAuditLogsRoute
   '/_dashboard/dashboard': typeof DashboardDashboardRoute
   '/_dashboard/profile': typeof DashboardProfileRoute
-  '/_dashboard/orgs/$orgId': typeof DashboardOrgsOrgIdRoute
+  '/_dashboard/organizations/$orgId': typeof DashboardOrganizationsOrgIdRoute
+  '/_dashboard/organizations/new': typeof DashboardOrganizationsNewRoute
   '/_dashboard/projects/$projectId': typeof DashboardProjectsProjectIdRoute
+  '/_dashboard/projects/new': typeof DashboardProjectsNewRoute
   '/_dashboard/tasks/$taskId': typeof DashboardTasksTaskIdRoute
+  '/_dashboard/tasks/new': typeof DashboardTasksNewRoute
   '/_dashboard/users/$userId': typeof DashboardUsersUserIdRoute
-  '/_dashboard/audit-logs/': typeof DashboardAuditLogsIndexRoute
-  '/_dashboard/orgs/': typeof DashboardOrgsIndexRoute
+  '/_dashboard/users/new': typeof DashboardUsersNewRoute
+  '/_dashboard/organizations/': typeof DashboardOrganizationsIndexRoute
   '/_dashboard/projects/': typeof DashboardProjectsIndexRoute
   '/_dashboard/tasks/': typeof DashboardTasksIndexRoute
   '/_dashboard/users/': typeof DashboardUsersIndexRoute
+  '/_dashboard/organizations/$orgId_/add-member': typeof DashboardOrganizationsOrgIdAddMemberRoute
+  '/_dashboard/projects/$projectId_/edit': typeof DashboardProjectsProjectIdEditRoute
+  '/_dashboard/tasks/$taskId_/edit': typeof DashboardTasksTaskIdEditRoute
+  '/_dashboard/tasks/$taskId_/subtask': typeof DashboardTasksTaskIdSubtaskRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/about'
     | '/login'
     | '/otp'
-    | '/register'
+    | '/audit-logs'
     | '/dashboard'
     | '/profile'
-    | '/orgs/$orgId'
+    | '/organizations/$orgId'
+    | '/organizations/new'
     | '/projects/$projectId'
+    | '/projects/new'
     | '/tasks/$taskId'
+    | '/tasks/new'
     | '/users/$userId'
-    | '/audit-logs/'
-    | '/orgs/'
+    | '/users/new'
+    | '/organizations/'
     | '/projects/'
     | '/tasks/'
     | '/users/'
+    | '/organizations/$orgId/add-member'
+    | '/projects/$projectId/edit'
+    | '/tasks/$taskId/edit'
+    | '/tasks/$taskId/subtask'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/about'
     | '/login'
     | '/otp'
-    | '/register'
+    | '/audit-logs'
     | '/dashboard'
     | '/profile'
-    | '/orgs/$orgId'
+    | '/organizations/$orgId'
+    | '/organizations/new'
     | '/projects/$projectId'
+    | '/projects/new'
     | '/tasks/$taskId'
+    | '/tasks/new'
     | '/users/$userId'
-    | '/audit-logs'
-    | '/orgs'
+    | '/users/new'
+    | '/organizations'
     | '/projects'
     | '/tasks'
     | '/users'
+    | '/organizations/$orgId/add-member'
+    | '/projects/$projectId/edit'
+    | '/tasks/$taskId/edit'
+    | '/tasks/$taskId/subtask'
   id:
     | '__root__'
     | '/'
     | '/_auth'
     | '/_dashboard'
-    | '/about'
     | '/_auth/login'
     | '/_auth/otp'
-    | '/_auth/register'
+    | '/_dashboard/audit-logs'
     | '/_dashboard/dashboard'
     | '/_dashboard/profile'
-    | '/_dashboard/orgs/$orgId'
+    | '/_dashboard/organizations/$orgId'
+    | '/_dashboard/organizations/new'
     | '/_dashboard/projects/$projectId'
+    | '/_dashboard/projects/new'
     | '/_dashboard/tasks/$taskId'
+    | '/_dashboard/tasks/new'
     | '/_dashboard/users/$userId'
-    | '/_dashboard/audit-logs/'
-    | '/_dashboard/orgs/'
+    | '/_dashboard/users/new'
+    | '/_dashboard/organizations/'
     | '/_dashboard/projects/'
     | '/_dashboard/tasks/'
     | '/_dashboard/users/'
+    | '/_dashboard/organizations/$orgId_/add-member'
+    | '/_dashboard/projects/$projectId_/edit'
+    | '/_dashboard/tasks/$taskId_/edit'
+    | '/_dashboard/tasks/$taskId_/subtask'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthRoute: typeof AuthRouteWithChildren
   DashboardRoute: typeof DashboardRouteWithChildren
-  AboutRoute: typeof AboutRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/about': {
-      id: '/about'
-      path: '/about'
-      fullPath: '/about'
-      preLoaderRoute: typeof AboutRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/_dashboard': {
       id: '/_dashboard'
       path: ''
@@ -285,12 +356,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardDashboardRouteImport
       parentRoute: typeof DashboardRoute
     }
-    '/_auth/register': {
-      id: '/_auth/register'
-      path: '/register'
-      fullPath: '/register'
-      preLoaderRoute: typeof AuthRegisterRouteImport
-      parentRoute: typeof AuthRoute
+    '/_dashboard/audit-logs': {
+      id: '/_dashboard/audit-logs'
+      path: '/audit-logs'
+      fullPath: '/audit-logs'
+      preLoaderRoute: typeof DashboardAuditLogsRouteImport
+      parentRoute: typeof DashboardRoute
     }
     '/_auth/otp': {
       id: '/_auth/otp'
@@ -327,18 +398,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardProjectsIndexRouteImport
       parentRoute: typeof DashboardRoute
     }
-    '/_dashboard/orgs/': {
-      id: '/_dashboard/orgs/'
-      path: '/orgs'
-      fullPath: '/orgs/'
-      preLoaderRoute: typeof DashboardOrgsIndexRouteImport
+    '/_dashboard/organizations/': {
+      id: '/_dashboard/organizations/'
+      path: '/organizations'
+      fullPath: '/organizations/'
+      preLoaderRoute: typeof DashboardOrganizationsIndexRouteImport
       parentRoute: typeof DashboardRoute
     }
-    '/_dashboard/audit-logs/': {
-      id: '/_dashboard/audit-logs/'
-      path: '/audit-logs'
-      fullPath: '/audit-logs/'
-      preLoaderRoute: typeof DashboardAuditLogsIndexRouteImport
+    '/_dashboard/users/new': {
+      id: '/_dashboard/users/new'
+      path: '/users/new'
+      fullPath: '/users/new'
+      preLoaderRoute: typeof DashboardUsersNewRouteImport
       parentRoute: typeof DashboardRoute
     }
     '/_dashboard/users/$userId': {
@@ -348,11 +419,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardUsersUserIdRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/_dashboard/tasks/new': {
+      id: '/_dashboard/tasks/new'
+      path: '/tasks/new'
+      fullPath: '/tasks/new'
+      preLoaderRoute: typeof DashboardTasksNewRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/_dashboard/tasks/$taskId': {
       id: '/_dashboard/tasks/$taskId'
       path: '/tasks/$taskId'
       fullPath: '/tasks/$taskId'
       preLoaderRoute: typeof DashboardTasksTaskIdRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/_dashboard/projects/new': {
+      id: '/_dashboard/projects/new'
+      path: '/projects/new'
+      fullPath: '/projects/new'
+      preLoaderRoute: typeof DashboardProjectsNewRouteImport
       parentRoute: typeof DashboardRoute
     }
     '/_dashboard/projects/$projectId': {
@@ -362,11 +447,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardProjectsProjectIdRouteImport
       parentRoute: typeof DashboardRoute
     }
-    '/_dashboard/orgs/$orgId': {
-      id: '/_dashboard/orgs/$orgId'
-      path: '/orgs/$orgId'
-      fullPath: '/orgs/$orgId'
-      preLoaderRoute: typeof DashboardOrgsOrgIdRouteImport
+    '/_dashboard/organizations/new': {
+      id: '/_dashboard/organizations/new'
+      path: '/organizations/new'
+      fullPath: '/organizations/new'
+      preLoaderRoute: typeof DashboardOrganizationsNewRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/_dashboard/organizations/$orgId': {
+      id: '/_dashboard/organizations/$orgId'
+      path: '/organizations/$orgId'
+      fullPath: '/organizations/$orgId'
+      preLoaderRoute: typeof DashboardOrganizationsOrgIdRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/_dashboard/tasks/$taskId_/subtask': {
+      id: '/_dashboard/tasks/$taskId_/subtask'
+      path: '/tasks/$taskId/subtask'
+      fullPath: '/tasks/$taskId/subtask'
+      preLoaderRoute: typeof DashboardTasksTaskIdSubtaskRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/_dashboard/tasks/$taskId_/edit': {
+      id: '/_dashboard/tasks/$taskId_/edit'
+      path: '/tasks/$taskId/edit'
+      fullPath: '/tasks/$taskId/edit'
+      preLoaderRoute: typeof DashboardTasksTaskIdEditRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/_dashboard/projects/$projectId_/edit': {
+      id: '/_dashboard/projects/$projectId_/edit'
+      path: '/projects/$projectId/edit'
+      fullPath: '/projects/$projectId/edit'
+      preLoaderRoute: typeof DashboardProjectsProjectIdEditRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/_dashboard/organizations/$orgId_/add-member': {
+      id: '/_dashboard/organizations/$orgId_/add-member'
+      path: '/organizations/$orgId/add-member'
+      fullPath: '/organizations/$orgId/add-member'
+      preLoaderRoute: typeof DashboardOrganizationsOrgIdAddMemberRouteImport
       parentRoute: typeof DashboardRoute
     }
   }
@@ -375,43 +495,58 @@ declare module '@tanstack/react-router' {
 interface AuthRouteChildren {
   AuthLoginRoute: typeof AuthLoginRoute
   AuthOtpRoute: typeof AuthOtpRoute
-  AuthRegisterRoute: typeof AuthRegisterRoute
 }
 
 const AuthRouteChildren: AuthRouteChildren = {
   AuthLoginRoute: AuthLoginRoute,
   AuthOtpRoute: AuthOtpRoute,
-  AuthRegisterRoute: AuthRegisterRoute,
 }
 
 const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)
 
 interface DashboardRouteChildren {
+  DashboardAuditLogsRoute: typeof DashboardAuditLogsRoute
   DashboardDashboardRoute: typeof DashboardDashboardRoute
   DashboardProfileRoute: typeof DashboardProfileRoute
-  DashboardOrgsOrgIdRoute: typeof DashboardOrgsOrgIdRoute
+  DashboardOrganizationsOrgIdRoute: typeof DashboardOrganizationsOrgIdRoute
+  DashboardOrganizationsNewRoute: typeof DashboardOrganizationsNewRoute
   DashboardProjectsProjectIdRoute: typeof DashboardProjectsProjectIdRoute
+  DashboardProjectsNewRoute: typeof DashboardProjectsNewRoute
   DashboardTasksTaskIdRoute: typeof DashboardTasksTaskIdRoute
+  DashboardTasksNewRoute: typeof DashboardTasksNewRoute
   DashboardUsersUserIdRoute: typeof DashboardUsersUserIdRoute
-  DashboardAuditLogsIndexRoute: typeof DashboardAuditLogsIndexRoute
-  DashboardOrgsIndexRoute: typeof DashboardOrgsIndexRoute
+  DashboardUsersNewRoute: typeof DashboardUsersNewRoute
+  DashboardOrganizationsIndexRoute: typeof DashboardOrganizationsIndexRoute
   DashboardProjectsIndexRoute: typeof DashboardProjectsIndexRoute
   DashboardTasksIndexRoute: typeof DashboardTasksIndexRoute
   DashboardUsersIndexRoute: typeof DashboardUsersIndexRoute
+  DashboardOrganizationsOrgIdAddMemberRoute: typeof DashboardOrganizationsOrgIdAddMemberRoute
+  DashboardProjectsProjectIdEditRoute: typeof DashboardProjectsProjectIdEditRoute
+  DashboardTasksTaskIdEditRoute: typeof DashboardTasksTaskIdEditRoute
+  DashboardTasksTaskIdSubtaskRoute: typeof DashboardTasksTaskIdSubtaskRoute
 }
 
 const DashboardRouteChildren: DashboardRouteChildren = {
+  DashboardAuditLogsRoute: DashboardAuditLogsRoute,
   DashboardDashboardRoute: DashboardDashboardRoute,
   DashboardProfileRoute: DashboardProfileRoute,
-  DashboardOrgsOrgIdRoute: DashboardOrgsOrgIdRoute,
+  DashboardOrganizationsOrgIdRoute: DashboardOrganizationsOrgIdRoute,
+  DashboardOrganizationsNewRoute: DashboardOrganizationsNewRoute,
   DashboardProjectsProjectIdRoute: DashboardProjectsProjectIdRoute,
+  DashboardProjectsNewRoute: DashboardProjectsNewRoute,
   DashboardTasksTaskIdRoute: DashboardTasksTaskIdRoute,
+  DashboardTasksNewRoute: DashboardTasksNewRoute,
   DashboardUsersUserIdRoute: DashboardUsersUserIdRoute,
-  DashboardAuditLogsIndexRoute: DashboardAuditLogsIndexRoute,
-  DashboardOrgsIndexRoute: DashboardOrgsIndexRoute,
+  DashboardUsersNewRoute: DashboardUsersNewRoute,
+  DashboardOrganizationsIndexRoute: DashboardOrganizationsIndexRoute,
   DashboardProjectsIndexRoute: DashboardProjectsIndexRoute,
   DashboardTasksIndexRoute: DashboardTasksIndexRoute,
   DashboardUsersIndexRoute: DashboardUsersIndexRoute,
+  DashboardOrganizationsOrgIdAddMemberRoute:
+    DashboardOrganizationsOrgIdAddMemberRoute,
+  DashboardProjectsProjectIdEditRoute: DashboardProjectsProjectIdEditRoute,
+  DashboardTasksTaskIdEditRoute: DashboardTasksTaskIdEditRoute,
+  DashboardTasksTaskIdSubtaskRoute: DashboardTasksTaskIdSubtaskRoute,
 }
 
 const DashboardRouteWithChildren = DashboardRoute._addFileChildren(
@@ -422,17 +557,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthRoute: AuthRouteWithChildren,
   DashboardRoute: DashboardRouteWithChildren,
-  AboutRoute: AboutRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}

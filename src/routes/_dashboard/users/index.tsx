@@ -1,273 +1,181 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useState, useEffect } from 'react'
-import { UserPlus } from 'lucide-react'
-import { useUsers, useCreateUser, useToggleUserStatus } from '../../../lib/queries/users.queries'
-import { UserTable } from '../../../components/users/UserTable'
-import { SearchDropdown } from '../../../components/common/SearchDropdown'
-import { Modal } from '../../../components/ui/modal'
-import { Input } from '../../../components/ui/input'
-import { Select } from '../../../components/ui/select'
-import { Button } from '../../../components/ui/button'
-import { Pagination } from '../../../components/ui/Pagination'
-import { LoadingSpinner } from '../../../components/common/LoadingSpinner'
-import { ErrorMessage } from '../../../components/common/ErrorMessage'
-import { useModal } from '../../../hooks/useModal'
+import { useEffect } from 'react'
+import { createFileRoute, redirect } from '@tanstack/react-router'
+import { authStore } from '../../../store/auth.store'
+import { Plus, Search, ChevronDown } from 'lucide-react'
+import { type SortingState } from '@tanstack/react-table'
+import { useUsers } from '../../../queries/users.queries'
+import { useOrgContext } from '../../../store/orgContext.store'
 import { useDebounce } from '../../../hooks/useDebounce'
-import { formatDate } from '../../../utils/date'
-import { Avatar } from '../../../components/ui/avatar'
-import type { User } from '../../../types/user.types'
 import { useAuth } from '../../../hooks/useAuth'
-import { useOrgStore } from '../../../store/org.store'
+import UserTable from '../../../components/users/UserTable'
+import Pagination from '../../../components/ui/Pagination'
+import { TableSkeleton } from '../../../components/ui/Skeleton'
+import ErrorMessage from '../../../components/common/ErrorMessage'
+import type { ApiError } from '../../../types/api.types'
+import type { UserStatus } from '../../../types/user.types'
 
 export const Route = createFileRoute('/_dashboard/users/')({
+  beforeLoad: () => {
+    const role = authStore.state.user?.role
+    if (role === 'developer') throw redirect({ to: '/dashboard', search: {} as any })
+  },
   validateSearch: (search: Record<string, unknown>) => ({
-    q: (search.q as string) || undefined,
-    status: (search.status as string) || undefined,
-    page: Number(search.page) > 1 ? Number(search.page) : undefined,
+    search:  (search.search as string) || undefined,
+    filter:  ((search.filter as string) || undefined) as UserFilter | undefined,
+    sortBy:  (search.sortBy as string) || undefined,
+    sortDir: (search.sortDir as string) === 'desc' ? 'desc' as const : undefined,
+    page:    Number(search.page)  > 1  ? Number(search.page)  : undefined,
+    limit:   Number(search.limit) > 0 && Number(search.limit) !== 10 ? Number(search.limit) : undefined,
   }),
   component: UsersPage,
 })
 
-const PAGE_SIZE = 20
+type UserFilter = UserStatus | 'unassigned' | ''
 
 function UsersPage() {
-  const search = Route.useSearch()
-  const navigate = useNavigate({ from: Route.fullPath })
-  const [createError, setCreateError] = useState('')
-  const [editError, setEditError] = useState('')
+  const { isAdmin, isSuperAdmin, user: me } = useAuth()
+  const { selectedOrg } = useOrgContext()
+  const navigate = Route.useNavigate()
+  const { search = '', filter = '' as UserFilter, sortBy = '', sortDir = 'asc', page = 1, limit = 10 } = Route.useSearch()
 
-  const debouncedQ = useDebounce(search.q ?? '', 400)
-  const { isSuperAdmin } = useAuth()
-  const { activeOrgId } = useOrgStore()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const setParams = (params: Record<string, any>) =>
+    navigate({ search: (prev) => ({ ...prev, ...params }) as any })
 
-  const effectiveOrgId = isSuperAdmin ? (activeOrgId ?? undefined) : undefined
+  const sorting: SortingState = sortBy ? [{ id: sortBy, desc: sortDir === 'desc' }] : []
 
-  const { data, isLoading } = useUsers({ search: debouncedQ || undefined, status: search.status || undefined, page: search.page ?? 1, limit: PAGE_SIZE, orgId: effectiveOrgId })
-  const createUser = useCreateUser()
-  const toggleStatus = useToggleUserStatus()
+  useEffect(() => { setParams({ page: undefined }) }, [selectedOrg?.id])
 
-  const createModal = useModal()
-  const editModal = useModal<User>()
 
-  const [createForm, setCreateForm] = useState({ name: '', email: '', password: '', role: 'developer' as 'developer' | 'admin' })
-  const [editStatus, setEditStatus] = useState<'active' | 'inactive'>('active')
+  const debouncedSearch = useDebounce(search, 400)
 
-  const users = data?.data ?? []
+  const sortOrder = sortBy ? sortDir : undefined
 
-  const setFilter = (updates: Record<string, string | undefined>) => {
-    navigate({
-      search: (prev) => ({
-        ...prev,
-        ...Object.fromEntries(Object.entries(updates).map(([k, v]) => [k, v === '' ? undefined : v])),
-        page: undefined,
-      }),
-      replace: true,
-    })
-  }
+  const { data, isLoading, isFetching, error } = useUsers({
+    search:     debouncedSearch || undefined,
+    status:     filter === 'active' || filter === 'inactive' ? filter : undefined,
+    unassigned: filter === 'unassigned' ? true : undefined,
+    orgId:      isSuperAdmin && selectedOrg ? selectedOrg.id : undefined,
+    sortBy:     sortBy || undefined,
+    sortOrder,
+    page,
+    limit,
+  })
 
-  const setPage = (page: number) => {
-    navigate({ search: (prev) => ({ ...prev, page: page > 1 ? page : undefined }), replace: true })
-  }
+  const users      = data?.users      ?? []
+  const pagination = data?.pagination
 
-  useEffect(() => {
-    if (editModal.data) setEditStatus(editModal.data.status)
-  }, [editModal.data])
+  const totalRecords = pagination?.totalRecords ?? 0
+  const totalPages   = pagination?.totalPages   ?? 1
+  const activePage   = pagination?.currentPage  ?? page
+  const activeLimit  = pagination?.limit        ?? limit
+  const startEntry   = totalRecords === 0 ? 0 : (activePage - 1) * activeLimit + 1
+  const endEntry     = Math.min(activePage * activeLimit, totalRecords)
 
-  const handleCreate = async (e: React.SyntheticEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    setCreateError('')
-    const name = createForm.name.trim()
-    const email = createForm.email.trim()
-    if (name.length < 2) { setCreateError('Name must be at least 2 characters.'); return }
-    if (!/^\S+@\S+\.\S+$/.test(email)) { setCreateError('Please enter a valid email address.'); return }
-    if (createForm.password.length < 8) { setCreateError('Password must be at least 8 characters.'); return }
-    try {
-      await createUser.mutateAsync({ ...createForm, name, email })
-      createModal.close()
-      setCreateForm({ name: '', email: '', password: '', role: 'developer' })
-    } catch (err: any) {
-      setCreateError(err.message ?? 'Failed to create user')
-    }
-  }
-
-  const handleEditSave = async () => {
-    if (!editModal.data) return
-    setEditError('')
-    try {
-      await toggleStatus.mutateAsync({ id: editModal.data.id, status: editStatus })
-      editModal.close()
-    } catch (err: any) {
-      setEditError(err.message ?? 'Failed to update user')
-    }
+  const handleSearch  = (val: string)     => setParams({ search: val || undefined, page: undefined })
+  const handleFilter  = (val: UserFilter) => setParams({ filter: val || undefined, page: undefined })
+  const handleLimit   = (val: number)     => setParams({ limit: val !== 10 ? val : undefined, page: undefined })
+  const handleSorting = (updater: any)    => {
+    const next: SortingState = typeof updater === 'function' ? updater(sorting) : updater
+    setParams({ sortBy: next[0]?.id || undefined, sortDir: next[0]?.desc ? 'desc' : undefined, page: undefined })
   }
 
   return (
-    <div className="h-full min-h-0 flex flex-col gap-6">
-      <div className="flex-shrink-0 space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-base font-bold text-gray-900">Users</h1>
-            <p className="text-sm text-gray-500">
-              {debouncedQ ? `${data?.total ?? 0} result${(data?.total ?? 0) !== 1 ? 's' : ''} found` : `All (${data?.total ?? 0})`}
-            </p>
-          </div>
+    <div className="flex flex-col flex-1 overflow-hidden">
+
+      {/* Table card */}
+      <div className="flex flex-col flex-1 overflow-hidden bg-white rounded-xl border border-gray-100">
+
+        {/* Header */}
+        <div className="flex-shrink-0 flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
+          <h2 className="font-semibold text-gray-800">
+            {isSuperAdmin && selectedOrg ? selectedOrg.name : 'All'}{' '}
+            <span className="text-gray-400 font-normal ml-1">({totalRecords})</span>
+          </h2>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => { setCreateError(''); createModal.open() }}
-              className="inline-flex items-center gap-2 bg-[#F4622A] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#E05520] transition"
-            >
-              <UserPlus className="w-4 h-4" />Add User
-            </button>
-          </div>
-        </div>
 
-        {/* Filters */}
-        <div className="flex flex-wrap items-center gap-3">
-          <SearchDropdown
-            value={search.q || ''}
-            onChange={(q) => setFilter({ q })}
-            onSelect={(item) => navigate({ to: '/users/$userId', params: { userId: item.id } })}
-            suggestions={users.map((u) => ({ id: u.id, label: u.name, subtitle: u.email }))}
-            placeholder="Search by name or email..."
-            className="min-w-[220px]"
-          />
-          <select
-            value={search.status || ''}
-            onChange={(e) => setFilter({ status: e.target.value })}
-            className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm bg-white focus:outline-none focus:border-[#F4622A]"
-          >
-            <option value="">All Statuses</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm flex-1 min-h-0 flex flex-col overflow-hidden">
-        {isLoading ? (
-          <div className="flex-1 min-h-0">
-            <LoadingSpinner />
-          </div>
-        ) : (
-          <div className="flex-1 min-h-0 overflow-auto">
-            <UserTable
-              users={users}
-              page={search.page ?? 1}
-              pageSize={PAGE_SIZE}
-              onEdit={editModal.open}
-            />
-          </div>
-        )}
-        <div className="flex-shrink-0">
-          <Pagination
-            page={search.page ?? 1}
-            totalPages={data?.totalPages ?? 1}
-            total={data?.total ?? 0}
-            pageSize={PAGE_SIZE}
-            onChange={setPage}
-          />
-        </div>
-      </div>
-
-      {/* ── Create Modal ─────────────────────────────────── */}
-      <Modal isOpen={createModal.isOpen} onClose={createModal.close} title="Add User" size="md">
-        <form onSubmit={handleCreate} className="space-y-4">
-          {createError && <ErrorMessage message={createError} />}
-          <Input
-            label="Name"
-            value={createForm.name}
-            onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
-            placeholder="Enter user name"
-            required
-          />
-          <Input
-            label="Email Address"
-            type="email"
-            value={createForm.email}
-            onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
-            placeholder="Enter email address"
-            required
-          />
-          <Input
-            label="Password"
-            type="password"
-            value={createForm.password}
-            onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
-            placeholder="Set a password (min 8 chars)"
-            required
-          />
-          <Select
-            label="Role"
-            value={createForm.role}
-            onChange={(e) => setCreateForm({ ...createForm, role: e.target.value as 'developer' | 'admin' })}
-            options={[
-              { value: 'developer', label: 'Developer' },
-              { value: 'admin', label: 'Admin' },
-            ]}
-          />
-          <div className="sticky bottom-0 -mx-5 -mb-4 px-5 pb-4 pt-3 bg-white border-t border-gray-100 flex justify-end gap-3 mt-4 z-10">
-            <Button type="button" variant="outline" onClick={createModal.close}>Cancel</Button>
-            <Button type="submit" loading={createUser.isPending}>Create User</Button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* ── Edit Modal ───────────────────────────────────── */}
-      <Modal isOpen={editModal.isOpen} onClose={editModal.close} title="Edit User" size="md">
-        {editModal.data && (
-          <div className="space-y-4">
-            {editError && <ErrorMessage message={editError} />}
-
-            <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-              <Avatar name={editModal.data.name} size="md" />
-              <div>
-                <p className="font-semibold text-gray-900">{editModal.data.name}</p>
-                <p className="text-sm text-gray-500">{editModal.data.email}</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div className="bg-gray-50 rounded-lg p-3">
-                <p className="text-xs text-gray-400 uppercase font-medium mb-1">Role</p>
-                <p className="text-gray-800 font-medium capitalize">{editModal.data.role}</p>
-              </div>
-              <div className="bg-gray-50 rounded-lg p-3">
-                <p className="text-xs text-gray-400 uppercase font-medium mb-1">Joined</p>
-                <p className="text-gray-800 font-medium">{formatDate(editModal.data.createdAt)}</p>
-              </div>
-              <div className="bg-gray-50 rounded-lg p-3">
-                <p className="text-xs text-gray-400 uppercase font-medium mb-1">Mobile</p>
-                <p className="text-gray-800 font-medium">{editModal.data.phone || '—'}</p>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+            {/* Status / Unassigned filter */}
+            <div className="relative">
               <select
-                value={editStatus}
-                onChange={(e) => setEditStatus(e.target.value as 'active' | 'inactive')}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:outline-none focus:border-[#F4622A] focus:ring-2 focus:ring-[#F4622A]/20"
+                value={filter}
+                onChange={(e) => handleFilter(e.target.value as UserFilter)}
+                className="appearance-none border border-gray-200 rounded-lg pl-3 pr-7 py-1.5 text-xs text-gray-600 bg-gray-50 outline-none cursor-pointer"
               >
+                <option value="">All Status</option>
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
+                <option value="unassigned">Unassigned</option>
               </select>
+              <ChevronDown size={12} className="absolute right-2 top-2.5 text-gray-400 pointer-events-none" />
             </div>
 
-            <div className="sticky bottom-0 -mx-5 -mb-4 px-5 pb-4 pt-3 bg-white border-t border-gray-100 flex justify-end gap-3 mt-4 z-10">
-              <Button type="button" variant="outline" onClick={editModal.close}>Cancel</Button>
-              <Button
-                type="button"
-                onClick={handleEditSave}
-                loading={toggleStatus.isPending}
-                disabled={editStatus === editModal.data.status}
-              >
-                Save Changes
-              </Button>
+            {/* Search */}
+            <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-1.5 bg-gray-50">
+              <input
+                value={search}
+                onChange={(e) => handleSearch(e.target.value)}
+                placeholder="Search by name"
+                className="bg-transparent outline-none w-36 text-gray-700 placeholder-gray-400 text-xs"
+              />
+              <Search size={13} className={isFetching ? 'text-orange-400 animate-pulse' : 'text-gray-400'} />
             </div>
+
+            {isAdmin && (
+              <button
+                onClick={() => navigate({ to: '/users/new' })}
+                className="flex items-center gap-1.5 bg-gray-900 text-white px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-gray-800 transition-colors"
+              >
+                <Plus size={13} /> Add User
+              </button>
+            )}
+
           </div>
-        )}
-      </Modal>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto">
+          {isLoading ? (
+            <div className="p-5">
+              <TableSkeleton rows={10} cols={8} />
+            </div>
+          ) : error ? (
+            <div className="p-5">
+              <ErrorMessage message={(error as ApiError)?.message ?? 'Failed to load users'} />
+            </div>
+          ) : users.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+              <p className="text-sm">No users found</p>
+            </div>
+          ) : (
+            <UserTable
+              users={users}
+              activePage={activePage}
+              activeLimit={activeLimit}
+              isAdmin={isAdmin}
+              myId={me?.id}
+              sorting={sorting}
+              onSortingChange={handleSorting}
+            />
+          )}
+        </div>
+
+      </div>
+
+      {/* Pagination footer */}
+      {!isLoading && !error && totalPages > 0 && (
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          totalRecords={totalRecords}
+          startEntry={startEntry}
+          endEntry={endEntry}
+          limit={limit}
+          hasPrevPage={pagination?.hasPrevPage}
+          hasNextPage={pagination?.hasNextPage}
+          onPageChange={(p) => setParams({ page: p > 1 ? p : undefined })}
+          onLimitChange={handleLimit}
+        />
+      )}
 
     </div>
   )

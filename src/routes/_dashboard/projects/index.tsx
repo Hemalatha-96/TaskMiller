@@ -1,176 +1,149 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useState } from 'react'
-import { Plus } from 'lucide-react'
-import { useProjects, useDeleteProject } from '../../../lib/queries/projects.queries'
-import { ProjectList } from '../../../components/projects/ProjectList'
-import { ProjectForm } from '../../../components/projects/ProjectForm'
-import { ConfirmDeleteModal } from '../../../components/common/ConfirmDeleteModal'
-import { SearchDropdown } from '../../../components/common/SearchDropdown'
-import { Modal } from '../../../components/ui/modal'
-import { Pagination } from '../../../components/ui/Pagination'
-import { ProjectGridSkeleton } from '../../../components/common/ProjectGridSkeleton'
-import { useModal } from '../../../hooks/useModal'
+import { useEffect } from 'react'
+import { createFileRoute } from '@tanstack/react-router'
+import { Plus, Search, ChevronDown } from 'lucide-react'
+import { useProjects } from '../../../queries/projects.queries'
+import { useOrgContext } from '../../../store/orgContext.store'
 import { useDebounce } from '../../../hooks/useDebounce'
-import { PROJECT_STATUS_OPTIONS } from '../../../constants/enums'
 import { useAuth } from '../../../hooks/useAuth'
-import { useOrgStore } from '../../../store/org.store'
-import type { Project } from '../../../types/project.types'
+import ProjectList from '../../../components/projects/ProjectList'
+import Pagination from '../../../components/ui/Pagination'
+import { CardSkeleton } from '../../../components/ui/Skeleton'
+import ErrorMessage from '../../../components/common/ErrorMessage'
+import type { ApiError } from '../../../types/api.types'
+import type { ProjectStatus } from '../../../types/project.types'
 
 export const Route = createFileRoute('/_dashboard/projects/')({
   validateSearch: (search: Record<string, unknown>) => ({
-    q: (search.q as string) || undefined,
-    status: (search.status as string) || undefined,
-    page: Number(search.page) > 1 ? Number(search.page) : undefined,
+    search: (search.search as string) || undefined,
+    status: ((search.status as string) || undefined) as ProjectStatus | undefined,
+    page:   Number(search.page)  > 1  ? Number(search.page)  : undefined,
+    limit:  Number(search.limit) > 0 && Number(search.limit) !== 10 ? Number(search.limit) : undefined,
   }),
   component: ProjectsPage,
 })
 
-const PAGE_SIZE = 20
 
 function ProjectsPage() {
-  const search = Route.useSearch()
-  const navigate = useNavigate({ from: Route.fullPath })
-  const [deleteError, setDeleteError] = useState('')
-  const { orgId, isSuperAdmin, isAdmin } = useAuth()
-  const { activeOrgId } = useOrgStore()
+  const { isAdmin, isSuperAdmin } = useAuth()
+  const { selectedOrg } = useOrgContext()
+  const navigate = Route.useNavigate()
+  const { search = '', status = '', page = 1, limit = 10 } = Route.useSearch()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const setParams = (params: Record<string, any>) =>
+    navigate({ search: (prev) => ({ ...prev, ...params }) as any })
 
-  const debouncedQ = useDebounce(search.q ?? '', 400)
-  const effectiveOrgId = isSuperAdmin ? (activeOrgId ?? undefined) : (orgId ?? undefined)
+  useEffect(() => { setParams({ page: undefined }) }, [selectedOrg?.id])
 
-  const { data, isLoading } = useProjects({
-    search: debouncedQ || undefined,
-    status: search.status,
-    page: search.page ?? 1,
-    limit: PAGE_SIZE,
-    orgId: effectiveOrgId,
+  const debouncedSearch = useDebounce(search, 400)
+
+  const { data, isLoading, isFetching, error } = useProjects({
+    search: debouncedSearch || undefined,
+    status: status || undefined,
+    orgId:  isSuperAdmin && selectedOrg ? selectedOrg.id : undefined,
+    page,
+    limit,
   })
-  const deleteProject = useDeleteProject()
-  const createModal = useModal()
-  const editModal = useModal<Project>()
-  const deleteModal = useModal<Project>()
 
-  const projects = data?.data ?? []
+  const projects   = data?.projects    ?? []
+  const pagination = data?.pagination
 
-  const setFilter = (updates: Record<string, string | number | undefined>) => {
-    navigate({
-      search: (prev) => ({
-        ...prev,
-        ...Object.fromEntries(Object.entries(updates).map(([k, v]) => [k, v === '' ? undefined : v])),
-        page: undefined,
-      }),
-      replace: true,
-    })
-  }
+  const totalRecords = pagination?.totalRecords ?? 0
+  const totalPages   = pagination?.totalPages   ?? 1
+  const activePage   = pagination?.currentPage  ?? page
+  const activeLimit  = pagination?.limit        ?? limit
+  const startEntry   = totalRecords === 0 ? 0 : (activePage - 1) * activeLimit + 1
+  const endEntry     = Math.min(activePage * activeLimit, totalRecords)
 
-  const setPage = (page: number) => {
-    navigate({ search: (prev) => ({ ...prev, page: page > 1 ? page : undefined }), replace: true })
-  }
-
-  const handleDelete = async () => {
-    if (!deleteModal.data) return
-    setDeleteError('')
-    try {
-      await deleteProject.mutateAsync(deleteModal.data.id)
-      deleteModal.close()
-    } catch (err: any) {
-      setDeleteError(err?.message ?? 'Failed to delete project.')
-    }
-  }
+  const handleSearch = (val: string)             => setParams({ search: val || undefined, page: undefined })
+  const handleStatus = (val: ProjectStatus | '') => setParams({ status: val || undefined, page: undefined })
+  const handleLimit  = (val: number)             => setParams({ limit: val !== 10 ? val : undefined, page: undefined })
 
   return (
-    <div className="h-full min-h-0 flex flex-col gap-6">
-      <div className="flex-shrink-0 space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-base font-bold text-gray-900">Projects</h1>
-            <p className="text-sm text-gray-500">
-              {debouncedQ ? `${data?.total ?? 0} result${(data?.total ?? 0) !== 1 ? 's' : ''} found` : `All (${data?.total ?? 0})`}
-            </p>
+    <div className="flex flex-col flex-1 overflow-hidden">
+
+      {/* Card */}
+      <div className="flex flex-col flex-1 overflow-hidden bg-white rounded-xl border border-gray-100">
+
+        {/* Header */}
+        <div className="flex-shrink-0 flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
+          <h2 className="font-semibold text-gray-800">
+            {isSuperAdmin && selectedOrg ? selectedOrg.name : 'All'}{' '}
+            <span className="text-gray-400 font-normal ml-1">({totalRecords})</span>
+          </h2>
+          <div className="flex items-center gap-2">
+
+            {/* Status filter */}
+            <div className="relative">
+              <select
+                value={status}
+                onChange={(e) => handleStatus(e.target.value as ProjectStatus | '')}
+                className="appearance-none border border-gray-200 rounded-lg pl-3 pr-7 py-1.5 text-xs text-gray-600 bg-white outline-none cursor-pointer"
+              >
+                <option value="">All Status</option>
+                <option value="active">Active</option>
+                <option value="on_hold">On Hold</option>
+                <option value="completed">Completed</option>
+              </select>
+              <ChevronDown size={12} className="absolute right-2 top-2.5 text-gray-400 pointer-events-none" />
+            </div>
+
+            {/* Search */}
+            <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-1.5 bg-white">
+              <input
+                value={search}
+                onChange={(e) => handleSearch(e.target.value)}
+                placeholder="Search by name"
+                className="bg-transparent outline-none w-36 text-gray-700 placeholder-gray-400 text-xs"
+              />
+              <Search size={13} className={isFetching ? 'text-orange-400 animate-pulse' : 'text-gray-400'} />
+            </div>
+
+            {/* Add Project — admin+ only */}
+            {isAdmin && (
+              <button
+                onClick={() => navigate({ to: '/projects/new' })}
+                className="flex items-center gap-1.5 bg-gray-900 text-white px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-gray-800 transition-colors"
+              >
+                <Plus size={13} /> Add Project
+              </button>
+            )}
+
           </div>
-          {isAdmin && (
-            <button
-              onClick={() => createModal.open()}
-              className="inline-flex items-center gap-2 bg-[#F4622A] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#E05520] transition"
-            >
-              <Plus className="w-4 h-4" />Add Project
-            </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto">
+          {isLoading ? (
+            <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => <CardSkeleton key={i} />)}
+            </div>
+          ) : error ? (
+            <div className="p-5">
+              <ErrorMessage message={(error as ApiError)?.message ?? 'Failed to load projects'} />
+            </div>
+          ) : (
+            <ProjectList projects={projects} />
           )}
         </div>
 
-        {/* Filters */}
-        <div className="flex flex-wrap items-center gap-3">
-          <SearchDropdown
-            value={search.q || ''}
-            onChange={(q) => setFilter({ q })}
-            onSelect={(item) => navigate({ to: '/projects/$projectId', params: { projectId: item.id } })}
-            suggestions={projects.map((p) => ({ id: p.id, label: p.title, subtitle: p.orgName ?? p.description ?? undefined }))}
-            placeholder="Search by name or description..."
-            className="min-w-[240px]"
-          />
-          <select
-            value={search.status ?? ''}
-            onChange={(e) => setFilter({ status: e.target.value })}
-            className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm bg-white focus:outline-none focus:border-[#F4622A]"
-          >
-            <option value="">All Statuses</option>
-            {PROJECT_STATUS_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
-        </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm flex-1 min-h-0 flex flex-col overflow-hidden">
-        {isLoading ? (
-          <div className="flex-1 min-h-0 overflow-y-auto p-4">
-            <ProjectGridSkeleton count={8} />
-          </div>
-        ) : (
-          <div className="flex-1 min-h-0 overflow-y-auto p-4">
-            <ProjectList
-              projects={projects}
-              onEdit={editModal.open}
-              onDelete={deleteModal.open}
-            />
-          </div>
-        )}
+      {/* Pagination */}
+      {!isLoading && !error && totalPages > 0 && (
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          totalRecords={totalRecords}
+          startEntry={startEntry}
+          endEntry={endEntry}
+          limit={limit}
+          hasPrevPage={pagination?.hasPrevPage}
+          hasNextPage={pagination?.hasNextPage}
+          onPageChange={(p) => setParams({ page: p > 1 ? p : undefined })}
+          onLimitChange={handleLimit}
+        />
+      )}
 
-        <div className="flex-shrink-0">
-          <Pagination
-            page={search.page ?? 1}
-            totalPages={data?.totalPages ?? 1}
-            total={data?.total ?? 0}
-            pageSize={PAGE_SIZE}
-            onChange={setPage}
-          />
-        </div>
-      </div>
-
-      {/* Create Modal */}
-      <Modal isOpen={createModal.isOpen} onClose={createModal.close} title="Add Project" size="md">
-        <ProjectForm onSuccess={createModal.close} onCancel={createModal.close} />
-      </Modal>
-
-      {/* Edit Modal */}
-      <Modal isOpen={editModal.isOpen} onClose={editModal.close} title="Edit Project" size="md">
-        {editModal.data && (
-          <ProjectForm
-            initial={editModal.data}
-            onSuccess={editModal.close}
-            onCancel={editModal.close}
-          />
-        )}
-      </Modal>
-
-      {/* Delete Modal */}
-      <ConfirmDeleteModal
-        isOpen={deleteModal.isOpen}
-        onClose={() => { deleteModal.close(); setDeleteError('') }}
-        onConfirm={handleDelete}
-        loading={deleteProject.isPending}
-        message={`Are you sure you want to delete "${deleteModal.data?.title}"? This will also delete all associated tasks.`}
-        error={deleteError}
-      />
     </div>
   )
 }

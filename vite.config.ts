@@ -1,17 +1,16 @@
 import { defineConfig } from 'vite'
-import { devtools } from '@tanstack/devtools-vite'
-
-import { tanstackStart } from '@tanstack/react-start/plugin/vite'
-
+import tanstackRouter from '@tanstack/router-plugin/vite'
 import viteReact from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
-import { nitroV2Plugin } from '@tanstack/nitro-v2-vite-plugin'
-
-const config = defineConfig({
+export default defineConfig({
   resolve: { tsconfigPaths: true },
-  plugins: [devtools(), tailwindcss(), tanstackStart(), viteReact(), nitroV2Plugin()],
+  plugins: [
+    tanstackRouter({ autoCodeSplitting: true }),
+    viteReact(),
+    tailwindcss(),
+  ],
+  optimizeDeps: {
+    include: ['react-easy-crop', 'normalize-wheel'],
+  },
 })
-
-export default config
-

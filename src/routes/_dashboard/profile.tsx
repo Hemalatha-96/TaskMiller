@@ -1,248 +1,279 @@
+import React, { useState, useRef } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { useState, useRef, useEffect } from 'react'
-import { Camera, Loader2, Mail, Phone, Shield, Clock, CalendarDays, CheckCircle2, Circle } from 'lucide-react'
-import { useAuth } from '../../hooks/useAuth'
-import { useMe, useUpdateMe } from '../../lib/queries/users.queries'
-import { useAuthStore } from '../../store/auth.store'
-import { Avatar } from '../../components/ui/avatar'
-import { UploadedImage } from '../../components/common/UploadedImage'
-import { Input } from '../../components/ui/input'
-import { Button } from '../../components/ui/button'
-import { getPresignedUrl, uploadToPresignedUrl } from '../../lib/api/uploads.api'
-import { formatDate } from '../../utils/date'
-import { isDirectUrl } from '../../utils/uploads'
+import {
+  Mail, ShieldCheck, Phone, Building2, Clock, Camera, Loader2, Pencil, X,
+} from 'lucide-react'
+import { useMe, useUpdateMeMutation } from '../../queries/users.queries'
+import { useUploadFile } from '../../queries/uploads.queries'
+import S3Image from '../../components/ui/S3Image'
+import ImageCropperModal from '../../components/ui/ImageCropperModal'
+import { ProfileSkeleton } from '../../components/ui/Skeleton'
+import { formatDate, roleBadgeClasses, userColor } from '../../lib/utils'
+import type { ApiError } from '../../types/api.types'
 
 export const Route = createFileRoute('/_dashboard/profile')({
   component: ProfilePage,
 })
 
-const ROLE_COLORS: Record<string, string> = {
-  superadmin: 'bg-purple-100 text-purple-700',
-  admin: 'bg-orange-100 text-orange-700',
-  manager: 'bg-blue-100 text-blue-700',
-  developer: 'bg-teal-100 text-teal-700',
-}
-
 function ProfilePage() {
-  const { user: authUser } = useAuth()
   const { data: profile, isLoading } = useMe()
-  const updateUserStore = useAuthStore((s) => s.updateUser)
-  const updateMe = useUpdateMe()
 
-  const [name, setName] = useState('')
-  const [phone, setPhone] = useState('')
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
-  const [avatarUploading, setAvatarUploading] = useState(false)
-  const [blobPreview, setBlobPreview] = useState<string | undefined>()
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [editOpen,   setEditOpen]   = useState(false)
+  const [name,       setName]       = useState('')
+  const [phone,      setPhone]      = useState('')
+  const [avatarUploadError, setAvatarUploadError] = useState<string | null>(null)
+  const [selectedFileForCrop, setSelectedFileForCrop] = useState<{ file: File; dataUrl: string } | null>(null)
 
-  useEffect(() => {
-    if (profile) {
-      setName(profile.name ?? '')
-      setPhone(profile.phone ?? '')
-    }
-  }, [profile])
+  const avatarInputRef = useRef<HTMLInputElement>(null)
 
-  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setError('')
-    setSuccess('')
-    // Show immediate local preview
-    const localUrl = URL.createObjectURL(file)
-    setBlobPreview(localUrl)
-    setAvatarUploading(true)
-    try {
-      const { presignedUrl, key } = await getPresignedUrl({
-        folder: 'avatars',
-        fileName: file.name,
-        contentType: file.type,
-        fileSize: file.size,
-      })
-      await uploadToPresignedUrl(presignedUrl, file, file.type)
-      const updated = await updateMe.mutateAsync({ avatar: key })
-      updateUserStore({ avatar: updated.avatar })
-      // If API returned a full URL, use it; otherwise keep blob preview until refetch
-      if (updated.avatar && isDirectUrl(updated.avatar)) {
-        setBlobPreview(updated.avatar)
-      }
-      setSuccess('Profile picture updated successfully.')
-    } catch (err: any) {
-      setBlobPreview(undefined)
-      setError(err?.message ?? 'Failed to upload avatar.')
-    } finally {
-      setAvatarUploading(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
-    }
+  const { mutate: updateMe, isPending: isUpdating, error } = useUpdateMeMutation()
+  const { mutateAsync: uploadFile, isPending: isUploading } = useUploadFile()
+
+  const apiError     = error as ApiError | null
+  const errorMessage = apiError?.message ?? null
+  const fieldErrors  = apiError?.errors?.reduce<Record<string, string>>(
+    (acc, e) => ({ ...acc, [e.field]: e.message }),
+    {},
+  ) ?? {}
+
+  const handleOpenEdit = () => {
+    if (!profile) return
+    setName(profile.name)
+    setPhone(profile.phone ?? '')
+    setEditOpen(true)
   }
 
-  const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
+  const handleSubmit = (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault()
-    setError('')
-    setSuccess('')
-    try {
-      const updated = await updateMe.mutateAsync({ name: name.trim(), phone: phone.trim() || undefined })
-      updateUserStore({ name: updated.name })
-      setSuccess('Profile updated successfully.')
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to update profile.')
-    }
-  }
-
-  const displayName = profile?.name ?? authUser?.name ?? 'User'
-  const displayRole = profile?.role ?? authUser?.role ?? ''
-  const displayEmail = profile?.email ?? authUser?.email ?? ''
-  const isActive = profile?.status === 'active'
-  const roleColor = ROLE_COLORS[displayRole] ?? 'bg-gray-100 text-gray-600'
-  const savedAvatarKey = profile?.avatar
-
-  if (isLoading) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
-      </div>
+    updateMe(
+      { name: name.trim(), phone: phone.trim() || undefined },
+      { onSuccess: () => setEditOpen(false) },
     )
   }
 
+  // Avatar-only update
+  const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 10 * 1024 * 1024) { setAvatarUploadError('File size must be less than 10MB'); return }
+    setAvatarUploadError(null)
+    const reader = new FileReader()
+    reader.onload = () => setSelectedFileForCrop({ file, dataUrl: reader.result as string })
+    reader.readAsDataURL(file)
+    e.target.value = ''
+  }
+
+  const handleCropComplete = async (croppedFile: File) => {
+    setSelectedFileForCrop(null)
+    try {
+      const key = await uploadFile({ folder: 'avatars', file: croppedFile })
+      updateMe({ avatarUrl: key })
+    } catch {
+      setAvatarUploadError('Failed to upload image. Please try again.')
+    }
+  }
+
+  if (isLoading || !profile) {
+    return <ProfileSkeleton />
+  }
+
   return (
-    <div className="h-full min-h-0 overflow-y-auto">
-      <div className="max-w-2xl mx-auto space-y-4 pb-8 pt-1">
-        <h1 className="text-base font-bold text-gray-900">My Profile</h1>
+    <div className="flex-1 overflow-y-auto pb-6">
+    <div className="max-w-2xl mx-auto w-full space-y-5">
 
-        {/* Profile card */}
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-          {/* Cover */}
-          <div className="h-16 bg-gradient-to-r from-[#F4622A]/20 via-orange-50 to-orange-100" />
+      {/* ── Profile details card ──────────────────────────────────────────── */}
+      <div className="bg-white rounded-xl border border-gray-100 p-6">
 
-          <div className="px-6 pb-5">
-            {/* Avatar row */}
-            <div className="flex items-end gap-4 -mt-8 mb-4">
-              <div className="relative group flex-shrink-0">
-                <div className="ring-4 ring-white rounded-full w-11 h-11 overflow-hidden flex-shrink-0">
-                  {blobPreview ? (
-                    <img src={blobPreview} alt={displayName} className="w-full h-full object-cover rounded-full" />
-                  ) : savedAvatarKey ? (
-                    <UploadedImage
-                      value={savedAvatarKey}
-                      alt={displayName}
-                      className="rounded-full"
-                      fallback={<Avatar name={displayName} size="lg" />}
-                    />
-                  ) : (
-                    <Avatar name={displayName} size="lg" />
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={avatarUploading}
-                  className="absolute inset-0 rounded-full flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity disabled:cursor-not-allowed"
-                  title="Change profile picture"
-                >
-                  {avatarUploading
-                    ? <Loader2 className="w-5 h-5 text-white animate-spin" />
-                    : <Camera className="w-5 h-5 text-white" />}
-                </button>
-                <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
+        {/* Header row: avatar + name/role + edit icon */}
+        <div className="flex items-center justify-between gap-4 pb-5 border-b border-gray-100">
+          <div className="flex items-center gap-4">
+
+            {/* Avatar with camera button */}
+            <div className="relative group flex-shrink-0">
+              <div className={`w-14 h-14 rounded-full ${userColor(profile.id)} flex items-center justify-center overflow-hidden`}>
+                {profile.avatarUrl ? (
+                  <S3Image storageKey={profile.avatarUrl} className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-white font-bold text-xl">{profile.name.charAt(0).toUpperCase()}</span>
+                )}
               </div>
 
-              <div className="flex-1 min-w-0 mb-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-bold text-gray-900 truncate">{displayName}</span>
-                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${roleColor}`}>
-                    <Shield className="w-3 h-3" />
-                    {displayRole}
-                  </span>
-                  {profile && (
-                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                      {isActive ? <CheckCircle2 className="w-3 h-3" /> : <Circle className="w-3 h-3" />}
-                      {profile.status}
-                    </span>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={avatarUploading}
-                  className="mt-1 text-xs text-[#F4622A] hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {avatarUploading ? 'Uploading…' : 'Edit photo'}
-                </button>
-              </div>
+              {/* Camera overlay — avatar-only update */}
+              <button
+                type="button"
+                onClick={() => avatarInputRef.current?.click()}
+                disabled={isUploading}
+                className="absolute inset-0 rounded-full bg-black/45 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity disabled:cursor-not-allowed"
+                title="Change profile photo"
+              >
+                {isUploading
+                  ? <Loader2 size={16} className="text-white animate-spin" />
+                  : <Camera size={16} className="text-white" />
+                }
+              </button>
+
+              <input
+                type="file"
+                ref={avatarInputRef}
+                className="hidden"
+                accept="image/*"
+                onChange={handleAvatarFileChange}
+              />
             </div>
 
-            {/* Info grid */}
-            <div className="grid grid-cols-2 gap-x-6 gap-y-2.5 mb-4 p-3 bg-gray-50 rounded-lg">
-              <div className="flex items-center gap-2">
-                <Mail className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-                <div>
-                  <div className="text-xs text-gray-400">Email</div>
-                  <div className="text-xs font-medium text-gray-700 truncate">{displayEmail}</div>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Phone className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-                <div>
-                  <div className="text-xs text-gray-400">Phone</div>
-                  <div className="text-xs font-medium text-gray-700">{profile?.phone || '—'}</div>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <CalendarDays className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-                <div>
-                  <div className="text-xs text-gray-400">Member Since</div>
-                  <div className="text-xs font-medium text-gray-700">{profile?.createdAt ? formatDate(profile.createdAt) : '—'}</div>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Clock className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-                <div>
-                  <div className="text-xs text-gray-400">Last Login</div>
-                  <div className="text-xs font-medium text-gray-700">{profile?.lastLoginAt ? formatDate(profile.lastLoginAt) : '—'}</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Stats */}
-            <div className="grid grid-cols-4 gap-2">
-              {[
-                { label: 'Projects', value: profile?.projects ?? 0 },
-                { label: 'Tasks', value: profile?.tasks ?? 0 },
-                { label: 'In Progress', value: profile?.inProgress ?? 0 },
-                { label: 'Pending', value: profile?.pending ?? 0 },
-              ].map((s) => (
-                <div key={s.label} className="bg-gray-50 rounded-lg p-2 text-center">
-                  <div className="text-sm font-bold text-gray-800">{s.value}</div>
-                  <div className="text-xs text-gray-500">{s.label}</div>
-                </div>
-              ))}
+            <div>
+              <h2 className="text-base font-bold text-gray-800 leading-tight">{profile.name}</h2>
+              <span className={`text-xs px-2 py-0.5 rounded font-medium capitalize ${roleBadgeClasses[profile.role] ?? 'bg-gray-100 text-gray-600'}`}>
+                {profile.role}
+              </span>
             </div>
           </div>
+
+          {/* Edit icon */}
+          <button
+            onClick={editOpen ? () => setEditOpen(false) : handleOpenEdit}
+            className="p-2 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors flex-shrink-0"
+            title={editOpen ? 'Close' : 'Edit profile'}
+          >
+            {editOpen ? <X size={15} /> : <Pencil size={15} />}
+          </button>
         </div>
 
-        {/* Edit form */}
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-4">Edit Information</h3>
+        {avatarUploadError && (
+          <p className="text-xs text-red-500 mt-3">{avatarUploadError}</p>
+        )}
 
-          {error   && <div className="mb-3 rounded-lg bg-red-50 border border-red-200 px-4 py-2.5 text-sm text-red-700">{error}</div>}
-          {success && <div className="mb-3 rounded-lg bg-green-50 border border-green-200 px-4 py-2.5 text-sm text-green-700">{success}</div>}
+        {/* Info grid */}
+        <div className="grid grid-cols-2 gap-x-6 gap-y-4 pt-5">
 
-          <form onSubmit={handleSubmit} className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <Input label="Full Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Enter your full name" />
-              <Input label="Phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Enter phone number" />
+          <div className="flex items-start gap-2.5">
+            <Mail size={14} className="text-gray-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs text-gray-400">Email</p>
+              <p className="text-sm font-medium text-gray-700 break-all">{profile.email}</p>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Input label="Email Address" type="email" value={displayEmail} disabled />
-              <Input label="Role" value={displayRole} disabled />
+          </div>
+
+          <div className="flex items-start gap-2.5">
+            <ShieldCheck size={14} className="text-gray-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs text-gray-400">Role</p>
+              <p className="text-sm font-medium text-gray-700 capitalize">{profile.role}</p>
             </div>
-            <div className="flex justify-end pt-1">
-              <Button type="submit" loading={updateMe.isPending}>Save Changes</Button>
+          </div>
+
+          <div className="flex items-start gap-2.5">
+            <Phone size={14} className="text-gray-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs text-gray-400">Phone</p>
+              <p className="text-sm font-medium text-gray-700">{profile.phone ?? '—'}</p>
             </div>
-          </form>
+          </div>
+
+          {profile.orgName && (
+            <div className="flex items-start gap-2.5">
+              <Building2 size={14} className="text-gray-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs text-gray-400">Organization</p>
+                <p className="text-sm font-medium text-gray-700">{profile.orgName}</p>
+              </div>
+            </div>
+          )}
+
+          {profile.lastLoginAt && (
+            <div className="flex items-start gap-2.5">
+              <Clock size={14} className="text-gray-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs text-gray-400">Last Login</p>
+                <p className="text-sm font-medium text-gray-700">{formatDate(profile.lastLoginAt)}</p>
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-start gap-2.5">
+            <Clock size={14} className="text-gray-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs text-gray-400">Member Since</p>
+              <p className="text-sm font-medium text-gray-700">{formatDate(profile.createdAt)}</p>
+            </div>
+          </div>
+
         </div>
       </div>
+
+      {/* ── Edit form — shown only when edit icon is clicked ──────────────── */}
+      {editOpen && (
+        <div className="bg-white rounded-xl border border-gray-100 px-6 pb-6">
+
+          <div className="pt-5 pb-4 border-b border-gray-100 mb-5">
+            <h3 className="text-base font-semibold text-gray-800">Update Profile</h3>
+          </div>
+
+          {errorMessage && Object.keys(fieldErrors).length === 0 && (
+            <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-3 py-2.5 rounded-lg mb-4">
+              {errorMessage}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                className={`w-full border rounded-lg px-3 py-2.5 text-sm outline-none focus:border-orange-400 transition-colors ${fieldErrors.name ? 'border-red-400' : 'border-gray-200'}`}
+              />
+              {fieldErrors.name && <p className="text-xs text-red-500 mt-1">{fieldErrors.name}</p>}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Phone <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="e.g. 9876543210"
+                className={`w-full border rounded-lg px-3 py-2.5 text-sm outline-none focus:border-orange-400 transition-colors ${fieldErrors.phone ? 'border-red-400' : 'border-gray-200'}`}
+              />
+              {fieldErrors.phone && <p className="text-xs text-red-500 mt-1">{fieldErrors.phone}</p>}
+            </div>
+
+            <div className="flex gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => setEditOpen(false)}
+                className="flex-1 border border-gray-200 text-gray-600 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isUpdating}
+                className="flex-1 bg-orange-500 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-orange-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {isUpdating ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+
+          </form>
+        </div>
+      )}
+
+      {selectedFileForCrop && (
+        <ImageCropperModal
+          imageSrc={selectedFileForCrop.dataUrl}
+          fileName={selectedFileForCrop.file.name}
+          fileType={selectedFileForCrop.file.type}
+          onSave={handleCropComplete}
+          onCancel={() => setSelectedFileForCrop(null)}
+        />
+      )}
+    </div>
     </div>
   )
 }

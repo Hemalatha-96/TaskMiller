@@ -1,210 +1,145 @@
-import { useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
-import { Mail, Lock, Eye, EyeOff } from 'lucide-react'
-import { Input } from '../ui/input'
-import { Button } from '../ui/button'
-import { useLogin, useRequestOtp, useVerifyOtp } from '../../lib/queries/auth.queries'
+import React, { useState } from 'react'
+import { useNavigate, Link } from '@tanstack/react-router'
+import { Eye, EyeOff } from 'lucide-react'
+import { useLoginMutation } from '../../queries/auth.queries'
+import type { ApiError } from '../../types/api.types'
 
-type LoginMode = 'password' | 'otp'
-type OtpStep = 'request' | 'verify'
+const TEST_CREDENTIALS = [
+  { role: 'Super Admin', email: 'superadmin@taskmiller.com', password: 'SuperAdmin@123' },
+  { role: 'Admin',       email: 'maheshbabubaddipudi@gmail.com', password: 'admin123' },
+  { role: 'Developer',   email: 'dev1@company.com', password: 'password123' },
+]
 
-type LoginFormProps = {
-  redirectTo?: string
-}
-
-export function LoginForm({ redirectTo }: LoginFormProps) {
-  const [mode, setMode] = useState<LoginMode>('password')
-
-  // Password login state
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-
-  // OTP login state
-  const [otpEmail, setOtpEmail] = useState('')
-  const [otp, setOtp] = useState('')
-  const [otpStep, setOtpStep] = useState<OtpStep>('request')
-  const [otpMessage, setOtpMessage] = useState('')
-
-  const [error, setError] = useState('')
+export default function LoginForm() {
   const navigate = useNavigate()
-  const login = useLogin()
-  const requestOtp = useRequestOtp()
-  const verifyOtp = useVerifyOtp()
+  const [email,       setEmail]       = useState('')
+  const [password,    setPassword]    = useState('')
+  const [showPass,    setShowPass]    = useState(false)
 
-  const navigateAfterAuth = () => {
-    const safeRedirect =
-      redirectTo &&
-      redirectTo.startsWith('/') &&
-      !redirectTo.startsWith('/login') &&
-      !redirectTo.startsWith('/register') &&
-      !redirectTo.startsWith('/otp')
-        ? redirectTo
-        : null
-
-    if (safeRedirect) {
-      navigate({ href: safeRedirect, replace: true })
-      return
-    }
-
-    navigate({ href: '/dashboard', replace: true })
+  const fillCredentials = (cred: typeof TEST_CREDENTIALS[number]) => {
+    setEmail(cred.email)
+    setPassword(cred.password)
   }
 
-  const handlePasswordLogin = async (e: React.FormEvent) => {
+  const { mutate: login, isPending, error } = useLoginMutation()
+
+  const handleSubmit = (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault()
-  setError('')
-    try {
-      await login.mutateAsync({ email, password })
-      navigateAfterAuth()
-    } catch (err: any) {
-      setError(err.message ?? 'Login failed')
-    }
+    login(
+      { email, password },
+      { onSuccess: () => navigate({ to: '/dashboard', search: {} as any }) },
+    )
   }
 
-  const handleRequestOtp = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-    setOtpMessage('')
-    try {
-      const res = await requestOtp.mutateAsync(otpEmail)
-      setOtpMessage(res.message)
-      setOtpStep('verify')
-    } catch (err: any) {
-      setError(err.message ?? 'Failed to send OTP')
-    }
-  }
-
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-    try {
-      await verifyOtp.mutateAsync({ email: otpEmail, otp })
-      navigateAfterAuth()
-    } catch (err: any) {
-      setError(err.message ?? 'OTP verification failed')
+  const apiError = error as ApiError | null
+  const errorMessage = apiError?.message ?? null
+  const fieldErrors: Record<string, string> = {}
+  if (Array.isArray(apiError?.errors)) {
+    for (const e of apiError.errors) {
+      if (e.field) fieldErrors[e.field] = e.message
     }
   }
 
   return (
-    <div className="space-y-4">
-      {/* Mode Toggle */}
-      <div className="flex rounded-lg border border-gray-200 p-1 bg-gray-50">
-        <button
-          type="button"
-          onClick={() => { setMode('password'); setError('') }}
-          className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-all ${mode === 'password' ? 'bg-white text-[#F4622A] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-        >
-          Password
-        </button>
-        <button
-          type="button"
-          onClick={() => { setMode('otp'); setError(''); setOtpStep('request'); setOtpMessage('') }}
-          className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-all ${mode === 'otp' ? 'bg-white text-[#F4622A] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-        >
-          OTP Login
-        </button>
+    <div className="min-h-screen bg-[#FFF7F4] flex overflow-hidden">
+      
+      {/* ── Left Section: Branding & Illustration ── */}
+      <div className="hidden lg:flex flex-1 flex-col p-12 h-screen">
+        {/* Logo */}
+        <div className="flex-shrink-0 z-10">
+          <span className="font-extrabold text-[#FF6B00] text-4xl tracking-tight">Task Miller</span>
+        </div>
+
+        {/* Big Graphic */}
+        <div className="flex-1 w-full mt-8 flex items-end justify-center pointer-events-none min-h-0">
+        </div>
       </div>
 
-      {error && (
-        <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>
-      )}
+      {/* ── Right Section: Form Card ── */}
+      <div className="w-full lg:w-[48%] flex items-center justify-center p-6 sm:p-12 relative z-10">
+        <div className="bg-white w-full max-w-[440px] rounded-[2rem] shadow-2xl shadow-orange-900/5 p-8 sm:p-10 border border-white">
+          
+          <h1 className="text-2xl font-bold text-gray-800 mb-1">Welcome back</h1>
+          <p className="text-sm text-gray-500 mb-6">Sign in to your account</p>
 
-      {/* Password Login */}
-      {mode === 'password' && (
-        <form onSubmit={handlePasswordLogin} className="space-y-4">
-          <Input
-            label="Email Address"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="Enter your email"
-            leftIcon={<Mail className="w-4 h-4" />}
-            required
-          />
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-gray-700">Password</label>
+        {/* Test credentials */}
+        <div className="bg-orange-50 border border-orange-100 rounded-lg px-3 py-2.5 mb-6">
+          <p className="text-xs font-semibold text-orange-600 mb-2">Quick fill — test accounts</p>
+          <div className="flex gap-2 flex-wrap">
+            {TEST_CREDENTIALS.map((cred) => (
+              <button
+                key={cred.role}
+                type="button"
+                onClick={() => fillCredentials(cred)}
+                className="text-xs bg-white border border-orange-200 text-orange-600 font-medium px-2.5 py-1 rounded-md hover:bg-orange-500 hover:text-white hover:border-orange-500 transition-colors"
+              >
+                {cred.role}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {errorMessage && Object.keys(fieldErrors).length === 0 && (
+          <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-3 py-2.5 rounded-lg mb-4">
+            {errorMessage}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Enter your email"
+              
+              className={`w-full border rounded-lg px-3 py-2.5 text-sm outline-none focus:border-orange-400 transition-colors ${fieldErrors.email ? 'border-red-400' : 'border-gray-200'}`}
+            />
+            {fieldErrors.email && (
+              <p className="text-red-500 text-xs mt-1">{fieldErrors.email}</p>
+            )}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
               <input
-                type={showPassword ? 'text' : 'password'}
+                type={showPass ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter your password"
-                required
-                className="w-full rounded-lg border border-gray-300 bg-white pl-10 pr-10 py-2 text-sm text-gray-900 placeholder-gray-400 transition focus:border-[#F4622A] focus:outline-none focus:ring-2 focus:ring-[#F4622A]/20"
+                className={`w-full border rounded-lg px-3 py-2.5 pr-10 text-sm outline-none focus:border-orange-400 transition-colors ${fieldErrors.password ? 'border-red-400' : 'border-gray-200'}`}
               />
               <button
                 type="button"
-                onClick={() => setShowPassword((v) => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                onClick={() => setShowPass((v) => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
               >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                {showPass ? <Eye size={15} /> : <EyeOff size={15} />}
               </button>
             </div>
+            {fieldErrors.password && (
+              <p className="text-red-500 text-xs mt-1">{fieldErrors.password}</p>
+            )}
           </div>
-          <Button type="submit" className="w-full" loading={login.isPending} size="lg">
-            Sign In
-          </Button>
-          <div className="mt-4 rounded-lg bg-orange-50 border border-orange-200 p-3 text-xs text-orange-700 space-y-1">
-            {/* <p className="font-semibold">Demo credentials:</p> */}
-            {/* <p>Super Admin: superadmin@taskmiller.com / SuperAdmin@123</p>
-            <p>Admin: maheshbabubaddipudi@gmail.com / admin123</p>
-            <p>Developer: dev1@company.com / password123</p> */}
-          </div>
+
+          <button
+            type="submit"
+            disabled={isPending}
+            className="w-full bg-orange-500 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-orange-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {isPending ? 'Signing in...' : 'Sign In'}
+          </button>
         </form>
-      )}
 
-      {/* OTP Login */}
-      {mode === 'otp' && (
-        <>
-          {otpStep === 'request' && (
-            <form onSubmit={handleRequestOtp} className="space-y-4">
-              <Input
-                label="Email Address"
-                type="email"
-                value={otpEmail}
-                onChange={(e) => setOtpEmail(e.target.value)}
-                placeholder="Enter your email"
-                leftIcon={<Mail className="w-4 h-4" />}
-                required
-              />
-              <Button type="submit" className="w-full" loading={requestOtp.isPending} size="lg">
-                Send OTP
-              </Button>
-            </form>
-          )}
+        <div className="text-center mt-4">
+          <Link to="/otp" className="text-sm text-orange-500 font-medium hover:underline">
+            Sign in with OTP instead
+          </Link>
+        </div>
 
-          {otpStep === 'verify' && (
-            <form onSubmit={handleVerifyOtp} className="space-y-4">
-              {otpMessage && (
-                <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">{otpMessage}</div>
-              )}
-              <p className="text-sm text-gray-500">
-                OTP sent to <strong>{otpEmail}</strong>
-              </p>
-              <Input
-                label="OTP Code"
-                type="text"
-                value={otp}
-                onChange={(e) => setOtp(e.target.value)}
-                placeholder="Enter 6-digit OTP"
-                maxLength={6}
-                required
-              />
-              <Button type="submit" className="w-full" loading={verifyOtp.isPending} size="lg">
-                Verify OTP
-              </Button>
-              <button
-                type="button"
-                onClick={() => { setOtpStep('request'); setOtp(''); setOtpMessage(''); setError('') }}
-                className="w-full text-sm text-gray-500 hover:text-gray-700"
-              >
-                Back
-              </button>
-            </form>
-          )}
-        </>
-      )}
+        </div>
+      </div>
     </div>
   )
 }

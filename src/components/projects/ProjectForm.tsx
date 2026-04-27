@@ -1,440 +1,403 @@
-import { useEffect, useRef, useState } from 'react'
-import { X, ChevronDown, ZoomIn, ZoomOut } from 'lucide-react'
-import { Button } from '../ui/button'
-import { Input } from '../ui/input'
-import { Textarea } from '../ui/textarea'
-import { ErrorMessage } from '../common/ErrorMessage'
-import { Spinner } from '../ui/spinner'
-import { Modal } from '../ui/modal'
-import { UploadedImage } from '../common/UploadedImage'
-import { useCreateProject, useUpdateProject } from '../../lib/queries/projects.queries'
-import { useUploadDownloadUrl } from '../../lib/queries/uploads.queries'
-import { useOrgs, useOrgMembers } from '../../lib/queries/orgs.queries'
-import { getPresignedUrl, uploadToPresignedUrl } from '../../lib/api/uploads.api'
-import { MAX_UPLOAD_SIZE_BYTES, MAX_UPLOAD_SIZE_ERROR_MESSAGE } from '../../constants/uploads'
-import { isDirectUrl, isUploadKey, normalizeUploadKey } from '../../utils/uploads'
-import type { Project } from '../../types/project.types'
+import React, { useState, useRef } from 'react'
+import { ChevronDown, Check, Camera, Loader2, X, Search } from 'lucide-react'
+import { useCreateProjectMutation, useUpdateProjectMutation } from '../../queries/projects.queries'
+import { useOrgs, useOrg } from '../../queries/orgs.queries'
+import { useUploadFile } from '../../queries/uploads.queries'
+import { useAuth } from '../../hooks/useAuth'
+import { avatarColors } from '../../lib/utils'
+import S3Image from '../ui/S3Image'
+import ImageCropperModal from '../ui/ImageCropperModal'
+import type { Project, ProjectStatus } from '../../types/project.types'
+import type { ApiError } from '../../types/api.types'
 
 interface ProjectFormProps {
-  initial?: Partial<Project>
-  onSuccess: () => void
-  onCancel: () => void
+  onClose:  () => void
+  project?: Project        // pass to enter edit mode
 }
 
-export function ProjectForm({ initial, onSuccess, onCancel }: ProjectFormProps) {
-  const logoInputRef = useRef<HTMLInputElement>(null)
-  const [title, setTitle] = useState(initial?.title ?? '')
-  const [description, setDescription] = useState(initial?.description ?? '')
-  const [orgId, setOrgId] = useState(initial?.orgId ?? '')
-  const [status, setStatus] = useState(initial?.status ?? 'active')
-  const [logoKey, setLogoKey] = useState<string | undefined>(initial?.logo)
-  const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | undefined>(undefined)
-  const [isUploadingLogo, setIsUploadingLogo] = useState(false)
-  const [isLogoZoomOpen, setIsLogoZoomOpen] = useState(false)
-  const [logoZoom, setLogoZoom] = useState(1)
-  const [isSavingLogoZoom, setIsSavingLogoZoom] = useState(false)
-  const [assignedUserIds, setAssignedUserIds] = useState<string[]>(
-    initial?.members?.map((m) => m.userId) ?? []
+const statusOptions: { value: ProjectStatus; label: string }[] = [
+  { value: 'active',    label: 'Active'    },
+  { value: 'on_hold',   label: 'On Hold'   },
+  { value: 'completed', label: 'Completed' },
+]
+
+export default function ProjectForm({ onClose, project }: ProjectFormProps) {
+  const isEdit        = !!project
+  const { isSuperAdmin, orgId: adminOrgId } = useAuth()
+
+  const [title,           setTitle]           = useState(project?.title       ?? '')
+  const [description,     setDescription]     = useState(project?.description ?? '')
+  const [status,          setStatus]          = useState<ProjectStatus>(project?.status ?? 'active')
+  const [logoUrl,         setLogoUrl]         = useState<string | null>(project?.logoUrl ?? null)
+  const [orgId,           setOrgId]           = useState(project?.orgId ?? (!isSuperAdmin ? (adminOrgId ?? '') : ''))
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>(
+    project?.members.map((m) => m.id) ?? [],
   )
-  const [showMemberDropdown, setShowMemberDropdown] = useState(false)
-  const [error, setError] = useState('')
+  const [orgOpen,      setOrgOpen]      = useState(false)
+  const [memberOpen,   setMemberOpen]   = useState(false)
+  const [orgSearch,    setOrgSearch]    = useState('')
+  const [memberSearch, setMemberSearch] = useState('')
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [selectedFileForCrop, setSelectedFileForCrop] = useState<{ file: File; dataUrl: string } | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const create = useCreateProject()
-  const update = useUpdateProject()
-  const { data: orgs } = useOrgs()
-  const { data: orgMembers } = useOrgMembers(orgId)
+  const { data: orgsData } = useOrgs({ limit: 100 }, { enabled: isSuperAdmin })
+  const { data: orgDetail } = useOrg(orgId)
 
-  const availableMembers = (orgMembers ?? []).map((m) => ({ id: m.userId, name: m.name, email: m.email }))
-  const normalizedLogoKey = normalizeUploadKey(logoKey)
-  const logoDownloadKey = isUploadKey(normalizedLogoKey) ? normalizedLogoKey : undefined
-  const { data: logoDownloadUrl, isLoading: logoDownloadLoading } = useUploadDownloadUrl(logoDownloadKey)
-  const directLogoUrl = isDirectUrl(logoKey) ? logoKey?.trim() : undefined
-  const zoomSrc = logoPreviewUrl ?? directLogoUrl ?? logoDownloadUrl
+  const { mutate: createProject, isPending: isCreating, error: createError } = useCreateProjectMutation()
+  const { mutate: updateProject, isPending: isUpdating, error: updateError } = useUpdateProjectMutation()
+  const { mutateAsync: uploadFile, isPending: isUploading } = useUploadFile()
 
-  useEffect(() => {
-    if (!logoPreviewUrl) return
-    return () => URL.revokeObjectURL(logoPreviewUrl)
-  }, [logoPreviewUrl])
+  const isPending = isCreating || isUpdating || isUploading
+  const error     = (createError ?? updateError) as ApiError | null
+
+  const errorMessage = error?.message ?? null
+  const fieldErrors  = error?.errors?.reduce<Record<string, string>>(
+    (acc, e) => ({ ...acc, [e.field]: e.message }),
+    {},
+  ) ?? {}
+
+  const orgs    = orgsData?.organizations ?? []
+  const members = orgDetail?.members ?? []
+
+  const selectedOrg = orgs.find((o) => o.id === orgId)
+
+  const filteredOrgs = orgs.filter((o) =>
+    o.name.toLowerCase().includes(orgSearch.toLowerCase()),
+  )
+  const filteredMembers = members.filter((m) =>
+    m.name.toLowerCase().includes(memberSearch.toLowerCase()) ||
+    m.email.toLowerCase().includes(memberSearch.toLowerCase()),
+  )
 
   const toggleMember = (userId: string) => {
-    setAssignedUserIds((prev) =>
-      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+    setSelectedUserIds((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId],
     )
   }
 
-  const handleOrgChange = (newOrgId: string) => {
-    setOrgId(newOrgId)
-    setAssignedUserIds([])
-  }
-
-  const handleLogoPick = () => {
-    logoInputRef.current?.click()
-  }
-
-  const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    e.target.value = ''
     if (!file) return
-
-    if (file.type && !file.type.startsWith('image/')) {
-      setError('Please select a valid image file.')
+    if (file.size > 10 * 1024 * 1024) {
+      setUploadError('File size must be less than 10MB')
       return
     }
+    setUploadError(null)
 
-    if (file.size > MAX_UPLOAD_SIZE_BYTES) {
-      setError(MAX_UPLOAD_SIZE_ERROR_MESSAGE)
-      return
+    const reader = new FileReader()
+    reader.onload = () => {
+      setSelectedFileForCrop({ file, dataUrl: reader.result as string })
     }
+    reader.readAsDataURL(file)
+    e.target.value = ''
+  }
 
-    const previousKey = logoKey
-    const previewUrl = URL.createObjectURL(file)
-    setLogoPreviewUrl(previewUrl)
-    setError('')
-    setIsUploadingLogo(true)
-
+  const handleCropComplete = async (croppedFile: File) => {
     try {
-      const contentType = file.type || 'application/octet-stream'
-      const { presignedUrl, key } = await getPresignedUrl({
-        folder: 'logos',
-        fileName: file.name,
-        contentType,
-        fileSize: file.size,
-      })
-      await uploadToPresignedUrl(presignedUrl, file, contentType)
-      setLogoKey(key)
-      if (initial?.id) {
-        await update.mutateAsync({ id: initial.id, data: { logo: key } })
-      }
+      setSelectedFileForCrop(null)
+      const key = await uploadFile({ folder: 'logos', file: croppedFile })
+      setLogoUrl(key)
     } catch (err: any) {
-      setLogoPreviewUrl(undefined)
-      setLogoKey(previousKey)
-      setError(err?.message ?? 'Failed to upload logo.')
-    } finally {
-      setIsUploadingLogo(false)
+      setUploadError(err.message || 'Failed to upload image')
     }
   }
 
-  const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
+  const handleSubmit = (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault()
-    setError('')
-    if (!title.trim()) { setError('Project title is required.'); return }
-    if (isUploadingLogo || isSavingLogoZoom) { setError('Logo upload in progress. Please wait.'); return }
-    try {
-      if (initial?.id) {
-        const payload: Partial<Project> = { title: title.trim(), description: description.trim(), orgId: orgId || undefined, status, logo: logoKey }
-        await update.mutateAsync({ id: initial.id, data: payload })
-      } else {
-        await create.mutateAsync({
-          title: title.trim(),
-          description: description.trim(),
-          logo: logoKey,
-          orgId: orgId || undefined,
-          status,
-          assignedUserIds: assignedUserIds.length ? assignedUserIds : undefined,
-        } as any)
-      }
-      onSuccess()
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to save project.')
-    }
-  }
-
-  const isPending = create.isPending || update.isPending || isUploadingLogo || isSavingLogoZoom
-  const selectedMemberNames = availableMembers.filter((m) => assignedUserIds.includes(m.id)).map((m) => m.name)
-  const logoValue = logoPreviewUrl ?? logoKey
-  const logoFallback = (
-    <div className="text-center">
-      <div className="text-2xl">+</div>
-      <div className="text-xs">{logoValue ? 'Change Logo' : 'Add Logo'}</div>
-    </div>
-  )
-
-  const handleSaveLogoZoom = async () => {
-    if (!zoomSrc) return
-    setError('')
-    setIsSavingLogoZoom(true)
-
-    try {
-      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-        const image = new Image()
-        image.crossOrigin = 'anonymous'
-        image.onload = () => resolve(image)
-        image.onerror = () => reject(new Error('Unable to load logo for saving. Please re-upload the image and try again.'))
-        image.src = zoomSrc
-      })
-
-      const size = 512
-      const canvas = document.createElement('canvas')
-      canvas.width = size
-      canvas.height = size
-      const ctx = canvas.getContext('2d')
-      if (!ctx) throw new Error('Failed to initialize image editor.')
-
-      // White background so padded areas look consistent across the app.
-      ctx.fillStyle = '#ffffff'
-      ctx.fillRect(0, 0, size, size)
-
-      const iw = img.naturalWidth || img.width
-      const ih = img.naturalHeight || img.height
-      if (!iw || !ih) throw new Error('Invalid logo image.')
-
-      const containScale = Math.min(size / iw, size / ih)
-      const scale = containScale * logoZoom
-      const dw = iw * scale
-      const dh = ih * scale
-      const dx = (size - dw) / 2
-      const dy = (size - dh) / 2
-
-      ctx.drawImage(img, dx, dy, dw, dh)
-
-      const blob = await new Promise<Blob>((resolve, reject) => {
-        canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Unable to save this logo. Please re-upload the image and try again.'))), 'image/png')
-      })
-
-      if (blob.size > MAX_UPLOAD_SIZE_BYTES) throw new Error(MAX_UPLOAD_SIZE_ERROR_MESSAGE)
-
-      const fileName = `logo-${Date.now()}.png`
-      const file = new File([blob], fileName, { type: 'image/png' })
-
-      const { presignedUrl, key } = await getPresignedUrl({
-        folder: 'logos',
-        fileName: file.name,
-        contentType: file.type,
-        fileSize: file.size,
-      })
-      await uploadToPresignedUrl(presignedUrl, file, file.type)
-
-      setLogoPreviewUrl(URL.createObjectURL(file))
-      setLogoKey(key)
-      if (initial?.id) {
-        await update.mutateAsync({ id: initial.id, data: { logo: key } })
-      }
-
-      setIsLogoZoomOpen(false)
-      setLogoZoom(1)
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to save logo.')
-    } finally {
-      setIsSavingLogoZoom(false)
+    if (isEdit) {
+      updateProject(
+        { id: project.id, body: { title, description: description || undefined, status, logoUrl: logoUrl || undefined } },
+        { onSuccess: onClose },
+      )
+    } else {
+      createProject(
+        {
+          title,
+          description:     description || undefined,
+          orgId,
+          assignedUserIds: selectedUserIds.length > 0 ? selectedUserIds : undefined,
+          logoUrl:         logoUrl || undefined,
+        },
+        { onSuccess: onClose },
+      )
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      {error && <ErrorMessage message={error} />}
-      <div className="flex justify-center mb-4">
-        <div className="relative">
-          <button
-            type="button"
-            onClick={handleLogoPick}
-            disabled={isPending}
-            className="w-20 h-20 rounded-full border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:border-[#F4622A] hover:text-[#F4622A] transition relative overflow-hidden disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {logoValue ? (
-              <UploadedImage value={logoValue} alt="Project logo" fallback={logoFallback} />
-            ) : (
-              logoFallback
-            )}
-            {isUploadingLogo && (
-              <div className="absolute inset-0 bg-white/70 flex items-center justify-center">
-                <Spinner size="sm" />
-              </div>
-            )}
-          </button>
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 pb-6">
 
-          {logoValue && (
-            <button
-              type="button"
-              onClick={() => { setLogoZoom(1); setIsLogoZoomOpen(true) }}
-              className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-white border border-gray-200 shadow-sm flex items-center justify-center text-gray-500 hover:text-[#F4622A] hover:border-orange-200 transition"
-              title="Zoom"
-              aria-label="Zoom logo"
-            >
-              <ZoomIn className="w-4 h-4" />
-            </button>
-          )}
-
-          <input
-            ref={logoInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleLogoChange}
-          />
+        <div className="flex items-center pt-6 pb-4 border-b border-gray-100 mb-2">
+          <h2 className="text-base font-semibold text-gray-800">
+            {isEdit ? 'Edit Project' : 'Create Project'}
+          </h2>
         </div>
-      </div>
 
-      <Modal
-        isOpen={isLogoZoomOpen}
-        onClose={() => { setIsLogoZoomOpen(false); setLogoZoom(1) }}
-        title="Logo Preview"
-        size="xl"
-      >
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setLogoZoom((z) => Math.max(0.5, z - 0.25))}
-              disabled={logoZoom <= 0.5}
-              className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Zoom out"
-              aria-label="Zoom out"
-            >
-              <ZoomOut className="w-4 h-4" />
-            </button>
+        {errorMessage && Object.keys(fieldErrors).length === 0 && (
+          <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-3 py-2.5 rounded-lg mb-4">
+            {errorMessage}
+          </div>
+        )}
+
+        {/* Logo Upload Section */}
+        <div className="flex flex-col items-center mb-6 mt-2">
+          <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+            <div className={`w-20 h-20 rounded-2xl flex items-center justify-center overflow-hidden border-2 border-dashed ${uploadError ? 'border-red-400' : 'border-gray-200'} bg-gray-50 transition-colors group-hover:border-orange-400 group-hover:bg-orange-50`}>
+              {logoUrl ? (
+                <S3Image storageKey={logoUrl} fallbackInitials={title.slice(0, 2).toUpperCase() || 'PR'} className="w-full h-full object-cover" />
+              ) : (
+                <div className="flex flex-col items-center justify-center text-gray-400 group-hover:text-orange-500 transition-colors">
+                  <Camera size={24} className="mb-1" />
+                  <span className="text-[10px] font-medium uppercase tracking-wider">Logo</span>
+                </div>
+              )}
+              {isUploading && (
+                <div className="absolute inset-0 bg-white/70 backdrop-blur-sm flex flex-col items-center justify-center z-10">
+                  <Loader2 className="w-5 h-5 text-orange-500 animate-spin" />
+                </div>
+              )}
+            </div>
+            
+            {/* Remove Logo Button */}
+            {logoUrl && !isUploading && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setLogoUrl(null)
+                }}
+                className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center shadow-sm hover:bg-red-600 transition-colors border-2 border-white z-20"
+                title="Remove logo"
+              >
+                <X size={12} strokeWidth={3} />
+              </button>
+            )}
+            
+            {/* Hidden Input */}
             <input
-              type="range"
-              min={0.5}
-              max={3}
-              step={0.1}
-              value={logoZoom}
-              onChange={(e) => setLogoZoom(Number(e.target.value))}
-              className="flex-1"
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              className="hidden"
             />
-            <button
-              type="button"
-              onClick={() => setLogoZoom((z) => Math.min(3, z + 0.25))}
-              disabled={logoZoom >= 3}
-              className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Zoom in"
-              aria-label="Zoom in"
-            >
-              <ZoomIn className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setLogoZoom(1)}
-              className="px-3 py-2 rounded-lg border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 transition"
-            >
-              Reset
-            </button>
-            <span className="text-xs text-gray-500 w-12 text-right">{Math.round(logoZoom * 100)}%</span>
           </div>
-
-          <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-            {zoomSrc ? (
-              <div className="mx-auto w-full max-w-[520px] aspect-square rounded-xl bg-white border border-gray-100 overflow-hidden flex items-center justify-center">
-                <img
-                  src={zoomSrc}
-                  alt="Project logo preview"
-                  className="w-full h-full object-contain transition-transform"
-                  style={{ transform: `scale(${logoZoom})` }}
-                />
-              </div>
-            ) : (
-              <div className="py-16 flex flex-col items-center justify-center gap-3 text-gray-500">
-                <Spinner size="md" />
-                <p className="text-sm">{logoDownloadLoading ? 'Loading logo...' : 'No logo to preview.'}</p>
-              </div>
-            )}
-          </div>
-
-          <div className="flex items-center justify-end gap-2 pt-1">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => { setIsLogoZoomOpen(false); setLogoZoom(1) }}
-              disabled={isSavingLogoZoom}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              onClick={handleSaveLogoZoom}
-              loading={isSavingLogoZoom}
-              disabled={!zoomSrc}
-            >
-              Save
-            </Button>
-          </div>
+          {uploadError && <p className="text-xs text-red-500 mt-2 font-medium">{uploadError}</p>}
         </div>
-      </Modal>
-      <Input label="Project Title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Enter Project Title" required />
-      <Textarea label="Description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Enter Project Description" />
-      <div className="flex flex-col gap-1">
-        <label className="text-sm font-medium text-gray-700">Organization</label>
-        <select
-          value={orgId}
-          onChange={(e) => handleOrgChange(e.target.value)}
-          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 transition focus:border-[#F4622A] focus:outline-none focus:ring-2 focus:ring-[#F4622A]/20"
-        >
-          <option value="">Select Organization (optional)</option>
-          {(orgs ?? []).map((o) => (
-            <option key={o.id} value={o.id}>{o.name}</option>
-          ))}
-        </select>
-      </div>
 
-      {/* Member selection - only shown on create and when an org is selected */}
-      {!initial?.id && orgId && (
-        <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-gray-700">Assign Members</label>
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setShowMemberDropdown((v) => !v)}
-              className="w-full flex items-center justify-between rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 transition focus:border-[#F4622A] focus:outline-none focus:ring-2 focus:ring-[#F4622A]/20"
-            >
-              <span className={selectedMemberNames.length ? 'text-gray-900 truncate' : 'text-gray-400'}>
-                {selectedMemberNames.length ? selectedMemberNames.join(', ') : 'Select members...'}
-              </span>
-              <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0 ml-1" />
-            </button>
-            {showMemberDropdown && (
-              <div className="absolute z-20 mt-1 w-full rounded-lg border border-gray-200 bg-white shadow-lg max-h-36 overflow-y-auto">
-                {availableMembers.length === 0 ? (
-                  <div className="px-3 py-2 text-sm text-gray-400">No members in this organization</div>
-                ) : (
-                  availableMembers.map((m) => (
-                    <label key={m.id} className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={assignedUserIds.includes(m.id)}
-                        onChange={() => toggleMember(m.id)}
-                        className="rounded border-gray-300 text-[#F4622A] focus:ring-[#F4622A] flex-shrink-0"
-                      />
-                      <div className="min-w-0">
-                        <div className="text-sm font-medium text-gray-800 truncate">{m.name}</div>
-                        <div className="text-xs text-gray-400 truncate">{m.email}</div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+
+          {/* Title */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g. Customer Portal"
+              required
+              className={`w-full border rounded-lg px-3 py-2.5 text-sm outline-none focus:border-orange-400 transition-colors ${fieldErrors.title ? 'border-red-400' : 'border-gray-200'}`}
+            />
+            {fieldErrors.title && <p className="text-xs text-red-500 mt-1">{fieldErrors.title}</p>}
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Description <span className="text-gray-400 font-normal">(optional)</span>
+            </label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Brief description of the project"
+              rows={3}
+              className={`w-full border rounded-lg px-3 py-2.5 text-sm outline-none focus:border-orange-400 transition-colors resize-none ${fieldErrors.description ? 'border-red-400' : 'border-gray-200'}`}
+            />
+            {fieldErrors.description && <p className="text-xs text-red-500 mt-1">{fieldErrors.description}</p>}
+          </div>
+
+          {/* Org — create mode, superadmin only */}
+          {!isEdit && isSuperAdmin && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Organization</label>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setOrgOpen((v) => !v)}
+                  className={`w-full border rounded-lg px-3 py-2.5 text-sm text-left flex items-center justify-between outline-none focus:border-orange-400 transition-colors ${fieldErrors.orgId ? 'border-red-400' : 'border-gray-200'}`}
+                >
+                  <span className={selectedOrg ? 'text-gray-800' : 'text-gray-400'}>
+                    {selectedOrg ? selectedOrg.name : 'Select an organization'}
+                  </span>
+                  <ChevronDown size={15} className="text-gray-400 flex-shrink-0" />
+                </button>
+
+                {orgOpen && (
+                  <>
+                  <div className="fixed inset-0 z-[9]" onClick={() => { setOrgOpen(false); setOrgSearch('') }} />
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-[10]">
+                    <div className="p-2 border-b border-gray-100">
+                      <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-md px-2.5 py-1.5">
+                        <Search size={12} className="text-gray-400 flex-shrink-0" />
+                        <input
+                          autoFocus
+                          value={orgSearch}
+                          onChange={(e) => setOrgSearch(e.target.value)}
+                          placeholder="Search organizations..."
+                          className="bg-transparent outline-none flex-1 text-xs text-gray-700 placeholder-gray-400"
+                        />
                       </div>
-                    </label>
-                  ))
+                    </div>
+                    <div className="max-h-44 overflow-y-auto">
+                      {filteredOrgs.length === 0 ? (
+                        <p className="text-sm text-gray-400 px-3 py-3">No organizations found</p>
+                      ) : (
+                        filteredOrgs.map((org) => (
+                          <button
+                            key={org.id}
+                            type="button"
+                            onClick={() => { setOrgId(org.id); setSelectedUserIds([]); setOrgOpen(false); setOrgSearch('') }}
+                            className="w-full text-left px-3 py-2.5 text-sm hover:bg-orange-50 flex items-center justify-between transition-colors"
+                          >
+                            <span className="text-gray-700">{org.name}</span>
+                            {orgId === org.id && <Check size={13} className="text-orange-500" />}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                  </>
                 )}
               </div>
-            )}
-          </div>
-          {assignedUserIds.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-1">
-              {availableMembers.filter((m) => assignedUserIds.includes(m.id)).map((m) => (
-                <span key={m.id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 text-xs font-medium border border-orange-100">
-                  {m.name}
-                  <button type="button" onClick={() => toggleMember(m.id)} className="hover:text-red-500">
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              ))}
+              {fieldErrors.orgId && <p className="text-xs text-red-500 mt-1">{fieldErrors.orgId}</p>}
             </div>
           )}
-        </div>
-      )}
 
-      <div className="flex flex-col gap-1">
-        <label className="text-sm font-medium text-gray-700">Status</label>
-        <select
-          value={status}
-          onChange={(e) => setStatus(e.target.value as Project['status'])}
-          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 transition focus:border-[#F4622A] focus:outline-none focus:ring-2 focus:ring-[#F4622A]/20"
-        >
-          <option value="active">Active</option>
-          <option value="on_hold">On Hold</option>
-          <option value="completed">Completed</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
-      </div>
-      <div className="sticky bottom-0 -mx-5 -mb-4 px-5 pb-4 pt-3 bg-white border-t border-gray-100 flex justify-end gap-3 mt-4 z-10">
-        <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
-        <Button type="submit" loading={isPending}>{initial?.id ? 'Update Project' : 'Create Project'}</Button>
-      </div>
-    </form>
+          {/* Members — create mode only, shown after org is selected */}
+          {!isEdit && orgId && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Members{' '}
+                <span className="text-gray-400 font-normal">(optional)</span>
+                {selectedUserIds.length > 0 && (
+                  <span className="ml-1.5 text-xs bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full font-medium">
+                    {selectedUserIds.length}
+                  </span>
+                )}
+              </label>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setMemberOpen((v) => !v)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-left flex items-center justify-between outline-none focus:border-orange-400 transition-colors"
+                >
+                  <span className="text-gray-400">
+                    {selectedUserIds.length === 0
+                      ? 'Select members'
+                      : `${selectedUserIds.length} member${selectedUserIds.length > 1 ? 's' : ''} selected`}
+                  </span>
+                  <ChevronDown size={15} className="text-gray-400 flex-shrink-0" />
+                </button>
+
+                {memberOpen && (
+                  <>
+                  <div className="fixed inset-0 z-[9]" onClick={() => { setMemberOpen(false); setMemberSearch('') }} />
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-[10]">
+                    <div className="p-2 border-b border-gray-100">
+                      <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-md px-2.5 py-1.5">
+                        <Search size={12} className="text-gray-400 flex-shrink-0" />
+                        <input
+                          autoFocus
+                          value={memberSearch}
+                          onChange={(e) => setMemberSearch(e.target.value)}
+                          placeholder="Search by name or email..."
+                          className="bg-transparent outline-none flex-1 text-xs text-gray-700 placeholder-gray-400"
+                        />
+                      </div>
+                    </div>
+                    <div className="max-h-48 overflow-y-auto">
+                      {filteredMembers.length === 0 ? (
+                        <p className="text-sm text-gray-400 px-3 py-3">No members found</p>
+                      ) : (
+                        filteredMembers.map((m, i) => (
+                          <button
+                            key={m.userId}
+                            type="button"
+                            onClick={() => toggleMember(m.userId)}
+                            className="w-full text-left px-3 py-2.5 hover:bg-orange-50 flex items-center gap-2.5 transition-colors"
+                          >
+                            <div className={`w-7 h-7 rounded-full ${avatarColors[i % avatarColors.length]} flex items-center justify-center flex-shrink-0`}>
+                              <span className="text-white text-xs font-semibold">{m.name.charAt(0).toUpperCase()}</span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-700 truncate">{m.name}</p>
+                              <p className="text-xs text-gray-400 truncate">{m.email}</p>
+                            </div>
+                            <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${selectedUserIds.includes(m.userId) ? 'bg-orange-500 border-orange-500' : 'border-gray-300'}`}>
+                              {selectedUserIds.includes(m.userId) && <Check size={10} className="text-white" />}
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Status — edit mode only */}
+          {isEdit && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+              <div className="flex gap-2">
+                {statusOptions.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setStatus(opt.value)}
+                    className={`flex-1 py-2 rounded-lg text-xs font-medium border transition-colors ${
+                      status === opt.value
+                        ? 'bg-orange-500 text-white border-orange-500'
+                        : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex gap-3 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 border border-gray-200 text-gray-600 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isPending}
+              className="flex-1 bg-orange-500 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-orange-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {isPending ? (isEdit ? 'Saving...' : 'Creating...') : (isEdit ? 'Save Changes' : 'Create Project')}
+            </button>
+          </div>
+
+        </form>
+
+        {selectedFileForCrop && (
+          <ImageCropperModal
+            imageSrc={selectedFileForCrop.dataUrl}
+            fileName={selectedFileForCrop.file.name}
+            fileType={selectedFileForCrop.file.type}
+            onSave={handleCropComplete}
+            onCancel={() => setSelectedFileForCrop(null)}
+          />
+        )}
+    </div>
   )
 }

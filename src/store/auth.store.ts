@@ -1,61 +1,56 @@
-import { create } from 'zustand'
-import { persist, createJSONStorage } from 'zustand/middleware'
-import type { StateStorage } from 'zustand/middleware'
-import type { UserRole } from '../types/user.types'
+import { Store } from '@tanstack/store'
+import { useStore } from '@tanstack/react-store'
 
-const noopStorage: StateStorage = {
-  getItem: () => null,
-  setItem: () => undefined,
-  removeItem: () => undefined,
-}
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-interface AuthUser {
+export type UserRole = 'superadmin' | 'admin' | 'developer'
+
+export interface AuthUser {
   id: string
   name: string
   email: string
   role: UserRole
   orgId?: string
-  avatar?: string
+  orgName?: string
+  avatarUrl?: string | null
 }
 
 interface AuthState {
   user: AuthUser | null
   accessToken: string | null
   refreshToken: string | null
-  isAuthenticated: boolean
-  setAuth: (user: AuthUser, accessToken: string, refreshToken: string) => void
-  clearAuth: () => void
-  updateUser: (data: Partial<AuthUser>) => void
 }
 
-export const useAuthStore = create<AuthState>()(
-  persist(
-    (set) => ({
-      user: null,
-      accessToken: null,
-      refreshToken: null,
-      isAuthenticated: false,
+// ─── Initial state (read from localStorage on app start) ─────────────────────
 
-      setAuth: (user, accessToken, refreshToken) =>
-        set({ user, accessToken, refreshToken, isAuthenticated: true }),
+const isBrowser = typeof window !== 'undefined'
+const stored = isBrowser ? localStorage.getItem('auth') : null
+const initial: AuthState = stored
+  ? JSON.parse(stored)
+  : { user: null, accessToken: null, refreshToken: null }
 
-      clearAuth: () =>
-        set({ user: null, accessToken: null, refreshToken: null, isAuthenticated: false }),
+// ─── Store ────────────────────────────────────────────────────────────────────
 
-      updateUser: (data) =>
-        set((state) => ({
-          user: state.user ? { ...state.user, ...data } : null,
-        })),
-    }),
-    {
-      name: 'tm-auth',
-      storage: createJSONStorage(() => (import.meta.env.SSR ? noopStorage : localStorage)),
-      partialize: (state) => ({
-        user: state.user,
-        accessToken: state.accessToken,
-        refreshToken: state.refreshToken,
-        isAuthenticated: state.isAuthenticated,
-      }),
-    },
-  ),
-)
+export const authStore = new Store<AuthState>(initial)
+
+// Persist to localStorage whenever state changes (browser only)
+authStore.subscribe(() => {
+  if (isBrowser) localStorage.setItem('auth', JSON.stringify(authStore.state))
+})
+
+// ─── Actions ──────────────────────────────────────────────────────────────────
+
+export function setAuth(user: AuthUser, accessToken: string, refreshToken: string) {
+  authStore.setState(() => ({ user, accessToken, refreshToken }))
+}
+
+export function clearAuth() {
+  if (isBrowser) localStorage.removeItem('auth')
+  authStore.setState(() => ({ user: null, accessToken: null, refreshToken: null }))
+}
+
+// ─── React hook ───────────────────────────────────────────────────────────────
+
+export function useAuthStore() {
+  return useStore(authStore, (state) => state)
+}

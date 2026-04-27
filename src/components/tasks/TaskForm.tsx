@@ -1,186 +1,377 @@
-import { useState } from 'react'
-import { Calendar, X, ChevronDown } from 'lucide-react'
-import { Button } from '../ui/button'
-import { Input } from '../ui/input'
-import { Textarea } from '../ui/textarea'
-import { Select } from '../ui/select'
-import { ErrorMessage } from '../common/ErrorMessage'
-import { useCreateTask, useUpdateTask } from '../../lib/queries/tasks.queries'
-import { useProjects } from '../../lib/queries/projects.queries'
-import { useOrgMembers } from '../../lib/queries/orgs.queries'
-import { TASK_STATUS_OPTIONS, TASK_PRIORITY_OPTIONS } from '../../constants/enums'
-import type { Task, TaskStatus, TaskPriority } from '../../types/task.types'
+import React, { useState } from 'react'
+import { ChevronDown, Check, Search } from 'lucide-react'
+import { useCreateTaskMutation, useUpdateTaskMutation } from '../../queries/tasks.queries'
+import { useProjects } from '../../queries/projects.queries'
+import { useUsers } from '../../queries/users.queries'
 import { useAuth } from '../../hooks/useAuth'
-import { useOrgStore } from '../../store/org.store'
+import { useOrgContext } from '../../store/orgContext.store'
+import { avatarColors } from '../../lib/utils'
+import type { Task, TaskPriority, TaskStatus, CreateTaskBody } from '../../types/task.types'
+import type { ApiError } from '../../types/api.types'
 
 interface TaskFormProps {
-  initial?: Partial<Task>
-  onSuccess: () => void
-  onCancel: () => void
+  onClose:       () => void
+  task?:         Task        // pass to enter edit mode
+  parentTaskId?: string      // pass to create a subtask
+  projectId?:    string      // pre-select a project (e.g. when creating subtask)
 }
 
-export function TaskForm({ initial, onSuccess, onCancel }: TaskFormProps) {
-  const [name, setName] = useState(initial?.name ?? '')
-  const [description, setDescription] = useState(initial?.description ?? '')
-  const [projectId, setProjectId] = useState(initial?.projectId ?? '')
-  const [status, setStatus] = useState<TaskStatus>(initial?.status ?? 'to_do')
-  const [priority, setPriority] = useState<TaskPriority>(initial?.priority ?? 'medium')
-  const [dueDate, setDueDate] = useState(initial?.dueDate ? initial.dueDate.slice(0, 10) : '')
-  const [tags, setTags] = useState(initial?.tags?.join(', ') ?? '')
-  const [assignedUserIds, setAssignedUserIds] = useState<string[]>(
-    initial?.assignees?.map((a) => a.userId) ?? []
+const priorityOptions: { value: TaskPriority; label: string }[] = [
+  { value: 'low',    label: 'Low'    },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high',   label: 'High'   },
+  { value: 'urgent', label: 'Urgent' },
+]
+
+const allStatusOptions: { value: TaskStatus; label: string }[] = [
+  { value: 'to_do',       label: 'To Do'       },
+  { value: 'in_progress', label: 'In Progress' },
+  { value: 'on_hold',     label: 'On Hold'     },
+  { value: 'completed',   label: 'Completed'   },
+]
+
+export default function TaskForm({ onClose, task, parentTaskId, projectId: preProjectId }: TaskFormProps) {
+  const isEdit    = !!task
+  const isSubtask = !!parentTaskId
+  const { isSuperAdmin, orgId: adminOrgId } = useAuth()
+  const { selectedOrg } = useOrgContext()
+
+  // For superadmin use the sidebar-selected org; for admin/developer use their own orgId
+  const orgId = isSuperAdmin && selectedOrg ? selectedOrg.id : adminOrgId ?? undefined
+
+  const [title,           setTitle]           = useState(task?.title       ?? '')
+  const [description,     setDescription]     = useState(task?.description ?? '')
+  const [priority,        setPriority]        = useState<TaskPriority>(task?.priority ?? 'medium')
+  const [status,          setStatus]          = useState<TaskStatus>(task?.status     ?? 'to_do')
+  const [dueDate,         setDueDate]         = useState(task?.dueDate ? task.dueDate.slice(0, 10) : '')
+  const [selectedProject, setSelectedProject] = useState(task?.projectId ?? preProjectId ?? '')
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>(
+    task?.assignees.map((a) => a.id) ?? [],
   )
-  const [showAssigneeDropdown, setShowAssigneeDropdown] = useState(false)
-  const [error, setError] = useState('')
+  const [projectOpen,   setProjectOpen]   = useState(false)
+  const [memberOpen,    setMemberOpen]    = useState(false)
+  const [projectSearch, setProjectSearch] = useState('')
+  const [memberSearch,  setMemberSearch]  = useState('')
 
-  const create = useCreateTask()
-  const update = useUpdateTask()
-  const { orgId, isSuperAdmin } = useAuth()
-  const { activeOrgId } = useOrgStore()
-  const effectiveOrgId = activeOrgId ?? (isSuperAdmin ? undefined : orgId ?? undefined)
-  const { data: projectsData, isLoading: projectsLoading, error: projectsError } = useProjects({
-    limit: 100,
-    orgId: effectiveOrgId,
-  })
-  const { data: orgMembers } = useOrgMembers(effectiveOrgId ?? '')
+  const { data: projectsData } = useProjects({ limit: 100, orgId })
+  const { data: usersData }    = useUsers({ limit: 100, orgId, role: 'developer' })
 
-  const projectOptions = (projectsData?.data ?? []).map((p) => ({ value: p.id, label: p.title }))
-  const allUsers = (orgMembers ?? []).map((m) => ({ id: m.userId, name: m.name, email: m.email }))
+  const { mutate: createTask, isPending: isCreating, error: createError } = useCreateTaskMutation()
+  const { mutate: updateTask, isPending: isUpdating, error: updateError } = useUpdateTaskMutation()
 
-  const toggleAssignee = (userId: string) => {
-    setAssignedUserIds((prev) =>
-      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+  const isPending = isCreating || isUpdating
+  const error     = (createError ?? updateError) as ApiError | null
+
+  const errorMessage = error?.message ?? null
+  const fieldErrors  = error?.errors?.reduce<Record<string, string>>(
+    (acc, e) => ({ ...acc, [e.field]: e.message }),
+    {},
+  ) ?? {}
+
+  const projects     = projectsData?.projects ?? []
+  const users        = (usersData?.users ?? []).filter((u) => u.role === 'developer')
+  const selectedProj = projects.find((p) => p.id === selectedProject)
+
+  const filteredProjects = projects.filter((p) =>
+    p.title.toLowerCase().includes(projectSearch.toLowerCase()),
+  )
+  const filteredUsers = users.filter((u) =>
+    u.name.toLowerCase().includes(memberSearch.toLowerCase()) ||
+    u.email.toLowerCase().includes(memberSearch.toLowerCase()),
+  )
+
+  const toggleUser = (userId: string) => {
+    setSelectedUserIds((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId],
     )
   }
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault()
-    setError('')
-
-    const trimmedName = name.trim()
-    if (!trimmedName) { setError('Task name is required.'); return }
-    if (projectsLoading) { setError('Projects are still loading. Please try again.'); return }
-    if (projectsError) { setError('Unable to load projects. Please refresh.'); return }
-    if (!projectId) { setError('Please select a project.'); return }
-
-    const selectedProject = projectsData?.data.find((p) => p.id === projectId)
-    const payload = {
-      name: trimmedName,
-      description: description.trim(),
-      projectId,
-      projectName: selectedProject?.title ?? '',
-      status,
-      priority,
-      dueDate: dueDate ? dueDate.slice(0, 10) : undefined,
-      tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
-      assignedUserIds,
-    }
-
-    try {
-      if (initial?.id) {
-        await update.mutateAsync({ id: initial.id, data: payload })
-      } else {
-        await create.mutateAsync(payload)
+    if (isEdit) {
+      updateTask(
+        {
+          id: task.id,
+          body: {
+            title,
+            description:     description || undefined,
+            status,
+            priority,
+            dueDate:         dueDate || undefined,
+            assignedUserIds: selectedUserIds.length > 0 ? selectedUserIds : undefined,
+          },
+        },
+        { onSuccess: onClose },
+      )
+    } else {
+      const body: CreateTaskBody = {
+        title,
+        description:     description || undefined,
+        priority,
+        projectId:       selectedProject,
+        dueDate:         dueDate || undefined,
+        assignedUserIds: selectedUserIds.length > 0 ? selectedUserIds : undefined,
       }
-      onSuccess()
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to save task.')
+      if (parentTaskId) body.parentTaskId = parentTaskId
+      createTask(body, { onSuccess: onClose })
     }
   }
 
-  const isPending = create.isPending || update.isPending
-
-  const selectedNames = allUsers.filter((u) => assignedUserIds.includes(u.id)).map((u) => u.name)
-
   return (
-    <form onSubmit={handleSubmit} className="space-y-3">
-      {error && <ErrorMessage message={error} />}
-      <Input label="Task Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Enter task name" required />
-      <Textarea label="Description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Describe the task..." rows={2} />
-      <div className="grid grid-cols-2 gap-3">
-        <Select
-          label="Project"
-          value={projectId}
-          onChange={(e) => setProjectId(e.target.value)}
-          options={projectOptions}
-          placeholder={projectsLoading ? 'Loading projects…' : 'Select project'}
-          required
-          disabled={projectsLoading}
-        />
-        <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-gray-700">Due Date</label>
-          <div className="relative">
-            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 pb-6">
+
+        <div className="flex items-center pt-6 pb-4 border-b border-gray-100 mb-2">
+          <h2 className="text-base font-semibold text-gray-800">
+            {isEdit ? 'Edit Task' : isSubtask ? 'Add Subtask' : 'Create Task'}
+          </h2>
+        </div>
+
+        {errorMessage && Object.keys(fieldErrors).length === 0 && (
+          <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-3 py-2.5 rounded-lg mb-4">
+            {errorMessage}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+
+          {/* Title */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g. Build login page"
+              required
+              className={`w-full border rounded-lg px-3 py-2.5 text-sm outline-none focus:border-orange-400 transition-colors ${fieldErrors.title ? 'border-red-400' : 'border-gray-200'}`}
+            />
+            {fieldErrors.title && <p className="text-xs text-red-500 mt-1">{fieldErrors.title}</p>}
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Description 
+            </label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Brief description of the task"
+              rows={3}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-orange-400 transition-colors resize-none"
+            />
+          </div>
+
+          {/* Project — create mode only, hidden for subtasks (inherited) */}
+          {!isEdit && !isSubtask && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Project</label>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setProjectOpen((v) => !v)}
+                  className={`w-full border rounded-lg px-3 py-2.5 text-sm text-left flex items-center justify-between outline-none focus:border-orange-400 transition-colors ${fieldErrors.projectId ? 'border-red-400' : 'border-gray-200'}`}
+                >
+                  <span className={selectedProj ? 'text-gray-800' : 'text-gray-400'}>
+                    {selectedProj ? selectedProj.title : 'Select a project'}
+                  </span>
+                  <ChevronDown size={15} className="text-gray-400 flex-shrink-0" />
+                </button>
+
+                {projectOpen && (
+                  <>
+                  <div className="fixed inset-0 z-[9]" onClick={() => { setProjectOpen(false); setProjectSearch('') }} />
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-[10]">
+                    <div className="p-2 border-b border-gray-100">
+                      <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-md px-2.5 py-1.5">
+                        <Search size={12} className="text-gray-400 flex-shrink-0" />
+                        <input
+                          autoFocus
+                          value={projectSearch}
+                          onChange={(e) => setProjectSearch(e.target.value)}
+                          placeholder="Search projects..."
+                          className="bg-transparent outline-none flex-1 text-xs text-gray-700 placeholder-gray-400"
+                        />
+                      </div>
+                    </div>
+                    <div className="max-h-44 overflow-y-auto">
+                      {filteredProjects.length === 0 ? (
+                        <p className="text-sm text-gray-400 px-3 py-3">No projects found</p>
+                      ) : (
+                        filteredProjects.map((p) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => { setSelectedProject(p.id); setProjectOpen(false); setProjectSearch('') }}
+                            className="w-full text-left px-3 py-2.5 text-sm hover:bg-orange-50 flex items-center justify-between transition-colors"
+                          >
+                            <span className="text-gray-700">{p.title}</span>
+                            {selectedProject === p.id && <Check size={13} className="text-orange-500" />}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                  </>
+                )}
+              </div>
+              {fieldErrors.projectId && <p className="text-xs text-red-500 mt-1">{fieldErrors.projectId}</p>}
+            </div>
+          )}
+
+          {/* Priority */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+            <div className="flex gap-2">
+              {priorityOptions.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setPriority(opt.value)}
+                  className={`flex-1 py-2 rounded-lg text-xs font-medium border transition-colors ${
+                    priority === opt.value
+                      ? 'bg-orange-500 text-white border-orange-500'
+                      : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Status — edit mode only */}
+          {isEdit && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+              <div className="relative">
+                <select
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value as TaskStatus)}
+                  className="w-full appearance-none border border-gray-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-orange-400 transition-colors cursor-pointer"
+                >
+                  {allStatusOptions
+                    .filter((opt) => {
+                      const current = task?.status
+                      if (current === 'in_progress' && opt.value === 'to_do') return false
+                      if (current === 'on_hold' && opt.value !== 'in_progress' && opt.value !== 'on_hold') return false
+                      if (current === 'completed' && opt.value === 'to_do') return false
+                      return true
+                    })
+                    .map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                </select>
+                <ChevronDown size={14} className="absolute right-3 top-3 text-gray-400 pointer-events-none" />
+              </div>
+            </div>
+          )}
+
+          {/* Due Date */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Due Date 
+            </label>
             <input
               type="date"
               value={dueDate}
+              min={new Date().toISOString().slice(0, 10)}
               onChange={(e) => setDueDate(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 pl-10 text-sm text-gray-900 focus:border-[#F4622A] focus:outline-none focus:ring-2 focus:ring-[#F4622A]/20 cursor-pointer"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-orange-400 transition-colors"
             />
           </div>
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <Select label="Status" value={status} onChange={(e) => setStatus(e.target.value as TaskStatus)} options={TASK_STATUS_OPTIONS} />
-        <Select label="Priority" value={priority} onChange={(e) => setPriority(e.target.value as TaskPriority)} options={TASK_PRIORITY_OPTIONS} />
-      </div>
 
-      {/* Assignees multi-select */}
-      <div className="flex flex-col gap-1">
-        <label className="text-sm font-medium text-gray-700">Assignees</label>
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setShowAssigneeDropdown((v) => !v)}
-            className="w-full flex items-center justify-between rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 transition focus:border-[#F4622A] focus:outline-none focus:ring-2 focus:ring-[#F4622A]/20"
-          >
-            <span className={selectedNames.length ? 'text-gray-900 truncate' : 'text-gray-400'}>
-              {selectedNames.length ? selectedNames.join(', ') : 'Select assignees…'}
-            </span>
-            <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0 ml-1" />
-          </button>
-          {showAssigneeDropdown && (
-            <div className="absolute z-20 mt-1 w-full rounded-lg border border-gray-200 bg-white shadow-lg max-h-36 overflow-y-auto">
-              {allUsers.length === 0 ? (
-                <div className="px-3 py-2 text-sm text-gray-400">No users available</div>
-              ) : (
-                allUsers.map((user) => (
-                  <label key={user.id} className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={assignedUserIds.includes(user.id)}
-                      onChange={() => toggleAssignee(user.id)}
-                      className="rounded border-gray-300 text-[#F4622A] focus:ring-[#F4622A] flex-shrink-0"
-                    />
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium text-gray-800 truncate">{user.name}</div>
-                      <div className="text-xs text-gray-400 truncate">{user.email}</div>
+          {/* Assignees */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Assignees{' '}
+              {selectedUserIds.length > 0 && (
+                <span className="ml-1.5 text-xs bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full font-medium">
+                  {selectedUserIds.length}
+                </span>
+              )}
+            </label>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setMemberOpen((v) => !v)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-left flex items-center justify-between outline-none focus:border-orange-400 transition-colors"
+              >
+                <span className="text-gray-400">
+                  {selectedUserIds.length === 0
+                    ? 'Select assignees'
+                    : `${selectedUserIds.length} assignee${selectedUserIds.length > 1 ? 's' : ''} selected`}
+                </span>
+                <ChevronDown size={15} className="text-gray-400 flex-shrink-0" />
+              </button>
+
+              {memberOpen && (
+                <>
+                <div className="fixed inset-0 z-[9]" onClick={() => { setMemberOpen(false); setMemberSearch('') }} />
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-[10]">
+                  <div className="p-2 border-b border-gray-100">
+                    <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-md px-2.5 py-1.5">
+                      <Search size={12} className="text-gray-400 flex-shrink-0" />
+                      <input
+                        autoFocus
+                        value={memberSearch}
+                        onChange={(e) => setMemberSearch(e.target.value)}
+                        placeholder="Search by name or email..."
+                        className="bg-transparent outline-none flex-1 text-xs text-gray-700 placeholder-gray-400"
+                      />
                     </div>
-                  </label>
-                ))
+                  </div>
+                  <div className="max-h-48 overflow-y-auto">
+                    {filteredUsers.length === 0 ? (
+                      <p className="text-sm text-gray-400 px-3 py-3">No users found</p>
+                    ) : (
+                      filteredUsers.map((u, i) => (
+                        <button
+                          key={u.id}
+                          type="button"
+                          onClick={() => toggleUser(u.id)}
+                          className="w-full text-left px-3 py-2.5 hover:bg-orange-50 flex items-center gap-2.5 transition-colors"
+                        >
+                          <div className={`w-7 h-7 rounded-full ${avatarColors[i % avatarColors.length]} flex items-center justify-center flex-shrink-0`}>
+                            <span className="text-white text-xs font-semibold">{u.name.charAt(0).toUpperCase()}</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-700 truncate">{u.name}</p>
+                            <p className="text-xs text-gray-400 truncate">{u.email}</p>
+                          </div>
+                          <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${selectedUserIds.includes(u.id) ? 'bg-orange-500 border-orange-500' : 'border-gray-300'}`}>
+                            {selectedUserIds.includes(u.id) && <Check size={10} className="text-white" />}
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+                </>
               )}
             </div>
-          )}
-        </div>
-        {assignedUserIds.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-1">
-            {allUsers.filter((u) => assignedUserIds.includes(u.id)).map((u) => (
-              <span key={u.id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 text-xs font-medium border border-orange-100">
-                {u.name}
-                <button type="button" onClick={() => toggleAssignee(u.id)} className="hover:text-red-500">
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
-            ))}
           </div>
-        )}
-      </div>
 
-      <Input label="Tags (comma-separated)" value={tags} onChange={(e) => setTags(e.target.value)} placeholder="e.g. Backend, API, Urgent" />
-      <div className="sticky bottom-0 -mx-5 -mb-4 px-5 pb-4 pt-3 bg-white border-t border-gray-100 flex justify-end gap-3 mt-4 z-10">
-        <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
-        <Button type="submit" loading={isPending}>{initial?.id ? 'Update Task' : 'Create Task'}</Button>
-      </div>
-    </form>
+          <div className="flex gap-3 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 border border-gray-200 text-gray-600 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isPending}
+              className="flex-1 bg-orange-500 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-orange-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {isPending
+                ? (isEdit ? 'Saving...' : 'Creating...')
+                : (isEdit ? 'Save Changes' : isSubtask ? 'Add Subtask' : 'Create Task')}
+            </button>
+          </div>
+
+        </form>
+    </div>
   )
 }

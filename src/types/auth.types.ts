@@ -3,27 +3,16 @@ export interface LoginPayload {
   password: string
 }
 
-export interface RegisterPayload {
-  name: string
+export interface OtpRequestPayload {
   email: string
-  password: string
-  phone?: string
 }
 
-export interface OtpPayload {
+export interface OtpVerifyPayload {
   email: string
-  otp?: string
+  otp: string
 }
 
 export interface TokenResponse {
   accessToken: string
   refreshToken: string
-  user: {
-    id: string
-    name: string
-    email: string
-    role: string
-    orgId?: string
-    avatar?: string
-  }
 }

@@ -1,26 +1,24 @@
-import { useToggleUserStatus } from '../../lib/queries/users.queries'
-import { cn } from '../../utils/cn'
+import type { UserStatus } from '../../types/user.types'
 
 interface UserStatusToggleProps {
-  userId: string
-  status: 'active' | 'inactive'
+  userId:    string
+  status:    UserStatus
+  disabled:  boolean
+  onToggle:  (id: string, current: UserStatus) => void
 }
 
-export function UserStatusToggle({ userId, status }: UserStatusToggleProps) {
-  const toggle = useToggleUserStatus()
-  const nextStatus = status === 'active' ? 'inactive' : 'active'
+export default function UserStatusToggle({ userId, status, disabled, onToggle }: UserStatusToggleProps) {
   return (
     <button
-      onClick={() => toggle.mutate({ id: userId, status: nextStatus })}
-      disabled={toggle.isPending}
-      className={cn(
-        'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium transition-all',
+      onClick={() => onToggle(userId, status)}
+      disabled={disabled}
+      className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors disabled:opacity-50 ${
         status === 'active'
-          ? 'bg-green-100 text-green-700 hover:bg-green-200'
-          : 'bg-red-100 text-red-700 hover:bg-red-200',
-      )}
+          ? 'border-red-200 text-red-500 hover:bg-red-50'
+          : 'border-green-200 text-green-600 hover:bg-green-50'
+      }`}
     >
-      {status === 'active' ? 'Active' : 'Inactive'}
+      {status === 'active' ? 'Deactivate' : 'Activate'}
     </button>
   )
 }

@@ -1,29 +1,42 @@
-export type AuditLogEntityType = 'task' | 'project' | 'organization' | 'org' | 'user' | (string & {})
-
-export interface AuditLogActor {
-  id: string
-  name: string
-  email: string
-}
-
-export interface AuditLogOrganization {
-  id: string
-  name: string
-  slug: string
-}
-
 export interface AuditLog {
   id: string
   orgId: string
   actorId: string
   action: string
-  entityType: AuditLogEntityType
+  entityType: 'task' | 'project' | string
   entityId: string
-  before: unknown
-  after: unknown
-  ipAddress?: string
+  before: string | null
+  after: string | null
+  ipAddress: string
   createdAt: string
-  actor?: AuditLogActor
-  organization?: AuditLogOrganization
+  actor: {
+    id: string
+    name: string
+    email: string
+  }
+  organization: {
+    id: string
+    name: string
+    slug: string
+  }
 }
 
+export interface AuditLogListResponse {
+  auditLogs: AuditLog[]
+  pagination: {
+    currentPage: number
+    limit: number
+    totalRecords: number
+    totalPages: number
+    hasNextPage: boolean
+    hasPrevPage: boolean
+  }
+}
+
+export interface AuditLogParams {
+  page?: number
+  limit?: number
+  entityType?: string
+  entityId?: string
+  orgId?: string
+}

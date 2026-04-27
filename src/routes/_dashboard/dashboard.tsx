@@ -1,253 +1,220 @@
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
-import { Plus, Eye } from 'lucide-react'
-import { useTasks } from '../../lib/queries/tasks.queries'
-import { useProjects } from '../../lib/queries/projects.queries'
-import { TaskPriorityBadge } from '../../components/tasks/TaskPriorityBadge'
-import { AvatarGroup } from '../../components/ui/avatar'
-import { Pagination } from '../../components/ui/Pagination'
-import { getEffectiveStatus, getTaskStatusColor } from '../../utils/status'
-import { TASK_STATUS_LABELS, TASK_PRIORITY_OPTIONS } from '../../constants/enums'
-import { formatDate, isOverdue } from '../../utils/date'
-import { TaskTableSkeleton } from '../../components/common/TaskTableSkeleton'
-import { useDebounce } from '../../hooks/useDebounce'
-import { cn } from '../../utils/cn'
+import { useEffect } from 'react'
+import { createFileRoute } from '@tanstack/react-router'
+import {
+  Search, ChevronDown,
+  FolderKanban, CheckCircle2, Clock, AlertCircle, TrendingUp, ListTodo, Timer, PauseCircle, Hourglass,
+} from 'lucide-react'
+import { type SortingState } from '@tanstack/react-table'
+import { useTasks } from '../../queries/tasks.queries'
+import { useProjects } from '../../queries/projects.queries'
+import { useOrgContext } from '../../store/orgContext.store'
 import { useAuth } from '../../hooks/useAuth'
-import { useOrgStore } from '../../store/org.store'
+import { useDebounce } from '../../hooks/useDebounce'
+import StatsCard from '../../components/ui/StatsCard'
+import Pagination from '../../components/ui/Pagination'
+import TaskTable from '../../components/tasks/TaskTable'
+import { StatsSkeleton, TableSkeleton } from '../../components/ui/Skeleton'
+import type { TaskStatus } from '../../types/task.types'
 
 export const Route = createFileRoute('/_dashboard/dashboard')({
   validateSearch: (search: Record<string, unknown>) => ({
-    q: (search.q as string) || undefined,
-    status: (search.status as string) || undefined,
-    projectId: (search.projectId as string) || undefined,
-    priority: (search.priority as string) || undefined,
-    page: Number(search.page) > 1 ? Number(search.page) : undefined,
+    search:        (search.search as string)        || undefined,
+    statusFilter:  ((search.statusFilter as string) || undefined) as TaskStatus | undefined,
+    projectFilter: (search.projectFilter as string) || undefined,
+    sortBy:        (search.sortBy as string)        || undefined,
+    sortDir:       (search.sortDir as string) === 'desc' ? 'desc' as const : undefined,
+    page:          Number(search.page)  > 1  ? Number(search.page)  : undefined,
+    limit:         Number(search.limit) > 0 && Number(search.limit) !== 10 ? Number(search.limit) : undefined,
   }),
   component: DashboardPage,
 })
 
-const PAGE_SIZE = 20
-
 function DashboardPage() {
-  const search = Route.useSearch()
-  const navigate = useNavigate({ from: Route.fullPath })
-  const { orgId, isSuperAdmin, isAdmin } = useAuth()
-  const { activeOrgId } = useOrgStore()
+  const { isSuperAdmin, isDeveloper, user, isAdmin } = useAuth()
+  const { selectedOrg }                              = useOrgContext()
 
-  const effectiveOrgId = isSuperAdmin ? (activeOrgId ?? undefined) : (orgId ?? undefined)
-  const debouncedQ = useDebounce(search.q || '', 400)
+  const orgId          = isSuperAdmin && selectedOrg ? selectedOrg.id : undefined
+  const assignedUserId = isDeveloper ? (user?.id ?? undefined) : undefined
 
-  const { data: tasksData, isLoading } = useTasks({
-    search: debouncedQ,
-    status: search.status,
-    projectId: search.projectId,
-    priority: search.priority,
-    limit: PAGE_SIZE,
-    page: search.page ?? 1,
-    orgId: effectiveOrgId,
+  const navigate = Route.useNavigate()
+  const { search = '', statusFilter = '', projectFilter = '', sortBy = '', sortDir = 'asc', page = 1, limit = 10 } = Route.useSearch()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const setParams = (params: Record<string, any>) =>
+    navigate({ search: (prev) => ({ ...prev, ...params }) as any })
+
+  const sorting: SortingState = sortBy ? [{ id: sortBy, desc: sortDir === 'desc' }] : []
+
+  useEffect(() => { setParams({ page: undefined }) }, [selectedOrg?.id])
+
+  const debouncedSearch = useDebounce(search, 400)
+
+  const sortOrder = sortBy ? sortDir : undefined
+
+  const { data: tasksData, isLoading: isLoadingTasks, isFetching } = useTasks({
+    search:    debouncedSearch || undefined,
+    status:    statusFilter    || undefined,
+    projectId: projectFilter   || undefined,
+    orgId,
+    assignedUserId,
+    sortBy:    sortBy || undefined,
+    sortOrder,
+    page,
+    limit,
   })
-  const { data: projectsData } = useProjects({ limit: 100, orgId: effectiveOrgId })
-  // Absolute (unfiltered) counts for accurate stat cards
-  const { data: absoluteData } = useTasks({ limit: 1, orgId: effectiveOrgId })
-  const { data: todoData } = useTasks({ status: 'to_do', limit: 1, orgId: effectiveOrgId })
-  const { data: inProgressData } = useTasks({ status: 'in_progress', limit: 1, orgId: effectiveOrgId })
-  const { data: onHoldData } = useTasks({ status: 'on_hold', limit: 1, orgId: effectiveOrgId })
-  const { data: completedData } = useTasks({ status: 'completed', limit: 1, orgId: effectiveOrgId })
 
-  const projects = projectsData?.data ?? []
-  const projectMap = Object.fromEntries(projects.map((p) => [p.id, p.title]))
-  const tasks = tasksData?.data ?? []
-  const overdueCount = tasks.filter((t) => isOverdue(t.dueDate) && t.status !== 'completed').length
+  const { data: projectsCountData } = useProjects({ orgId, limit: 1 })
+  const { data: projectsListData }  = useProjects({ orgId, limit: 100 })
 
-  // Stats always use absolute totals, independent of table filters
-  const absoluteTotal = absoluteData?.total ?? 0
-  const todoCount = todoData?.total ?? 0
-  const inProgressCount = inProgressData?.total ?? 0
-  const onHoldCount = onHoldData?.total ?? 0
-  const completedCount = completedData?.total ?? 0
-  const completionRate = absoluteTotal > 0 ? Math.round((completedCount / absoluteTotal) * 100) : 0
+  const taskStats      = tasksData?.stats
+  const totalTasks     = taskStats?.total       ?? 0
+  const completedCount = taskStats?.completed   ?? 0
+  const todoCount      = taskStats?.todo        ?? 0
+  const inProgressCount = taskStats?.inProgress ?? 0
+  const onHoldCount    = taskStats?.onHold      ?? 0
+  const overdueCount   = taskStats?.overdue     ?? 0
+  const onTimeCount    = taskStats?.onTime      ?? 0
+  const offTimeCount   = taskStats?.offTime     ?? 0
+  const totalProjects  = projectsCountData?.pagination.totalRecords ?? 0
 
-  const setFilter = (updates: Record<string, string | number | undefined>) => {
-    navigate({
-      search: (prev) => ({
-        ...prev,
-        ...Object.fromEntries(Object.entries(updates).map(([k, v]) => [k, v === '' ? undefined : v])),
-        page: undefined,
-      }),
-      replace: true,
-    })
-  }
+  const tasks      = tasksData?.tasks      ?? []
+  const pagination = tasksData?.pagination
+  const projects   = projectsListData?.projects ?? []
 
-  const setPage = (page: number) => {
-    navigate({ search: (prev) => ({ ...prev, page: page > 1 ? page : undefined }), replace: true })
-  }
+  const totalRecords = pagination?.totalRecords ?? 0
+  const totalPages   = pagination?.totalPages   ?? 1
+  const activePage   = pagination?.currentPage  ?? page
+  const activeLimit  = pagination?.limit        ?? limit
+  const startEntry   = totalRecords === 0 ? 0 : (activePage - 1) * activeLimit + 1
+  const endEntry     = Math.min(activePage * activeLimit, totalRecords)
 
-  const STAT_CARDS = [
-    { label: 'Projects', value: String(projectsData?.total ?? 0), color: 'bg-blue-500', light: 'bg-blue-50' },
-    { label: 'Total Tasks', value: String(absoluteTotal), color: 'bg-gray-500', light: 'bg-gray-50' },
-    { label: 'Todo', value: String(todoCount), color: 'bg-cyan-500', light: 'bg-cyan-50' },
-    { label: 'In Progress', value: String(inProgressCount), color: 'bg-purple-500', light: 'bg-purple-50' },
-    { label: 'On Hold', value: String(onHoldCount), color: 'bg-yellow-500', light: 'bg-yellow-50' },
-    { label: 'Overdue', value: String(overdueCount), color: 'bg-red-500', light: 'bg-red-50' },
-    { label: 'Completed', value: String(completedCount), color: 'bg-teal-500', light: 'bg-teal-50' },
-    { label: 'Completion Rate', value: `${completionRate}%`, color: 'bg-indigo-500', light: 'bg-indigo-50' },
+  const stats = [
+    { label: 'Projects',         value: totalProjects,   iconBg: 'bg-pink-100',   icon: <FolderKanban size={17} className="text-pink-500"   /> },
+    { label: 'Tasks',            value: totalTasks,      iconBg: 'bg-orange-100', icon: <ListTodo     size={17} className="text-orange-500" /> },
+    { label: 'Completed',        value: completedCount,  iconBg: 'bg-green-100',  icon: <CheckCircle2 size={17} className="text-green-500"  /> },
+    { label: 'To Do',            value: todoCount,       iconBg: 'bg-gray-100',   icon: <Hourglass    size={17} className="text-gray-500"   /> },
+    { label: 'In Progress',      value: inProgressCount, iconBg: 'bg-blue-100',   icon: <Timer        size={17} className="text-blue-500"   /> },
+    { label: 'On Hold',          value: onHoldCount,     iconBg: 'bg-yellow-100', icon: <PauseCircle  size={17} className="text-yellow-500" /> },
+    { label: 'Overdue',          value: overdueCount,    iconBg: 'bg-red-100',    icon: <AlertCircle  size={17} className="text-red-500"    /> },
+    { label: 'On Time',          value: onTimeCount,     iconBg: 'bg-teal-100',   icon: <Clock        size={17} className="text-teal-500"   /> },
+    { label: 'Off Time',         value: offTimeCount,    iconBg: 'bg-purple-100', icon: <Timer        size={17} className="text-purple-500" /> },
+    {
+      label: 'Completion\nRate',
+      value: `${totalTasks > 0 ? Math.round((completedCount / totalTasks) * 100) : 0}%`,
+      iconBg: 'bg-indigo-100',
+      icon: <TrendingUp size={17} className="text-indigo-500" />,
+    },
   ]
 
+  const handleSearch        = (val: string)          => setParams({ search: val || undefined,        page: undefined })
+  const handleStatusChange  = (val: TaskStatus | '') => setParams({ statusFilter: val || undefined,  page: undefined })
+  const handleProjectChange = (val: string)          => setParams({ projectFilter: val || undefined, page: undefined })
+  const handleLimit         = (val: number)          => setParams({ limit: val !== 10 ? val : undefined, page: undefined })
+  const handleSorting       = (updater: any)         => {
+    const next: SortingState = typeof updater === 'function' ? updater(sorting) : updater
+    setParams({ sortBy: next[0]?.id || undefined, sortDir: next[0]?.desc ? 'desc' : undefined, page: undefined })
+  }
+
   return (
-    <div className="h-full min-h-0 flex flex-col gap-6">
-      <div className="flex-shrink-0 space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-base font-bold text-gray-900">Dashboard</h1>
-            <p className="text-sm text-gray-500">Overview of all your projects and tasks</p>
+    <div className="flex flex-col flex-1 overflow-hidden">
+
+      {/* Stats */}
+      <div className="flex-shrink-0 mb-5">
+        {isLoadingTasks ? (
+          <StatsSkeleton />
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-5 xl:grid-cols-10 gap-3">
+            {stats.map((s) => <StatsCard key={s.label} {...s} />)}
           </div>
-          {isAdmin && (
-            <div className="flex items-center gap-2">
-              <Link
-                to="/tasks"
-                search={{ q: undefined, status: undefined, projectId: undefined, priority: undefined, page: undefined }}
-                className="inline-flex items-center gap-2 border border-[#F4622A] text-[#F4622A] px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-50 transition"
-              >
-                <Plus className="w-4 h-4" />Add Task
-              </Link>
-              <Link
-                to="/projects"
-                search={{ q: undefined, status: undefined, page: undefined }}
-                className="inline-flex items-center gap-2 bg-[#F4622A] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#E05520] transition"
-              >
-                <Plus className="w-4 h-4" />Add Project
-              </Link>
-              {isSuperAdmin && (
-                <Link
-                  to="/orgs"
-                  search={{ q: '' }}
-                  className="inline-flex items-center gap-2 bg-gray-800 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition"
-                >
-                  <Plus className="w-4 h-4" />Add Org
-                </Link>
-              )}
+        )}
+      </div>
+
+      {/* Tasks List */}
+      <div className="flex flex-col flex-1 overflow-hidden bg-white rounded-xl border border-gray-100 min-h-0">
+
+        {/* Header */}
+        <div className="flex-shrink-0 flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
+          <h2 className="font-semibold text-gray-800">
+            Tasks List
+            <span className="text-gray-400 font-normal ml-1.5">({totalRecords})</span>
+          </h2>
+          <div className="flex items-center gap-2 flex-wrap">
+
+            <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-1.5 bg-gray-50">
+              <Search size={14} className={isFetching ? 'text-orange-400 animate-pulse' : 'text-gray-400'} />
+              <input
+                value={search}
+                onChange={(e) => handleSearch(e.target.value)}
+                placeholder="Search by task"
+                className="bg-transparent outline-none w-32 text-gray-700 placeholder-gray-400 text-xs"
+              />
             </div>
+
+            <div className="relative">
+              <select
+                value={statusFilter}
+                onChange={(e) => handleStatusChange(e.target.value as TaskStatus | '')}
+                className="appearance-none border border-gray-200 rounded-lg pl-3 pr-7 py-1.5 text-xs text-gray-500 bg-gray-50 outline-none cursor-pointer"
+              >
+                <option value="">Select Status</option>
+                <option value="to_do">To Do</option>
+                <option value="in_progress">In Progress</option>
+                <option value="on_hold">On Hold</option>
+                <option value="completed">Completed</option>
+              </select>
+              <ChevronDown size={12} className="absolute right-2 top-2.5 text-gray-400 pointer-events-none" />
+            </div>
+
+            <div className="relative">
+              <select
+                value={projectFilter}
+                onChange={(e) => handleProjectChange(e.target.value)}
+                className="appearance-none border border-gray-200 rounded-lg pl-3 pr-7 py-1.5 text-xs text-gray-500 bg-gray-50 outline-none cursor-pointer"
+              >
+                <option value="">Select Project</option>
+                {projects.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+              </select>
+              <ChevronDown size={12} className="absolute right-2 top-2.5 text-gray-400 pointer-events-none" />
+            </div>
+
+          </div>
+        </div>
+
+        {/* Table */}
+        <div className="flex-1 overflow-y-auto">
+          {isLoadingTasks ? (
+            <div className="p-5">
+              <TableSkeleton rows={8} cols={7} />
+            </div>
+          ) : (
+            <TaskTable
+              tasks={tasks}
+              projects={projects}
+              startEntry={startEntry}
+              isAdmin={isAdmin}
+              sorting={sorting}
+              onSortingChange={handleSorting}
+            />
           )}
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
-          {STAT_CARDS.map((card) => (
-            <div key={card.label} className={`${card.light} rounded-lg p-2.5 flex flex-col gap-0.5`}>
-              <span className="text-sm font-bold text-gray-900">{card.value}</span>
-              <span className="text-xs font-medium text-gray-500">{card.label}</span>
-            </div>
-          ))}
-        </div>
       </div>
 
-      {/* Task List */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm flex-1 min-h-0 flex flex-col overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b border-gray-100">
-          <h2 className="text-sm font-semibold text-gray-800">Tasks List</h2>
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              value={search.q || ''}
-              onChange={(e) => setFilter({ q: e.target.value })}
-              placeholder="Search by task..."
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:border-[#F4622A] focus:ring-1 focus:ring-[#F4622A]/20"
-            />
-            <select
-              value={search.status || ''}
-              onChange={(e) => setFilter({ status: e.target.value })}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 focus:outline-none focus:border-[#F4622A] bg-white"
-            >
-              <option value="">Select Status</option>
-              <option value="to_do">To Do</option>
-              <option value="in_progress">In Progress</option>
-              <option value="on_hold">On Hold</option>
-              <option value="overdue">Overdue</option>
-              <option value="completed">Completed</option>
-            </select>
-            <select
-              value={search.projectId || ''}
-              onChange={(e) => setFilter({ projectId: e.target.value })}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 focus:outline-none focus:border-[#F4622A] bg-white"
-            >
-              <option value="">All Projects</option>
-              {projects.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
-            </select>
-            <select
-              value={search.priority || ''}
-              onChange={(e) => setFilter({ priority: e.target.value })}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 focus:outline-none focus:border-[#F4622A] bg-white"
-            >
-              <option value="">All Priorities</option>
-              {TASK_PRIORITY_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
-        </div>
+      {/* Pagination footer */}
+      {!isLoadingTasks && totalPages > 0 && (
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          totalRecords={totalRecords}
+          startEntry={startEntry}
+          endEntry={endEntry}
+          limit={limit}
+          hasPrevPage={pagination?.hasPrevPage}
+          hasNextPage={pagination?.hasNextPage}
+          onPageChange={(p) => setParams({ page: p > 1 ? p : undefined })}
+          onLimitChange={handleLimit}
+        />
+      )}
 
-        {isLoading ? (
-          <TaskTableSkeleton rows={8} includeCreatedBy={false} />
-        ) : (
-          <div className="flex-1 min-h-0 overflow-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="sticky top-0 z-10 bg-white border-b border-gray-50">
-                  {['S.No', 'Project', 'Task Name', 'Assigned User', 'Due Date', 'Status', 'Priority', 'Actions'].map((h) => (
-                    <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {tasks.length === 0 ? (
-                  <tr><td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-400">No tasks found</td></tr>
-                ) : tasks.map((task, i) => (
-                  <tr key={task.id} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="px-4 py-3 text-gray-400 text-xs">{String(((search.page ?? 1) - 1) * PAGE_SIZE + i + 1).padStart(2, '0')}</td>
-                    <td className="px-4 py-3 text-xs font-medium text-gray-600 whitespace-nowrap">{projectMap[task.projectId] ?? task.projectName ?? '—'}</td>
-                    <td className="px-4 py-3">
-                      <Link to="/tasks/$taskId" params={{ taskId: task.id }} className="font-medium text-gray-800 hover:text-[#F4622A] transition-colors whitespace-nowrap">
-                        {task.name}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3">
-                      <AvatarGroup names={task.assignees.map((a) => a.name)} max={3} size="xs" />
-                    </td>
-                    <td className={cn('px-4 py-3 text-xs whitespace-nowrap', isOverdue(task.dueDate) && task.status !== 'completed' ? 'text-red-500 font-medium' : 'text-gray-500')}>
-                      {formatDate(task.dueDate)}
-                    </td>
-                    <td className="px-4 py-3">
-                      {(() => {
-                        const effectiveStatus = getEffectiveStatus(task.status, task.dueDate)
-                        return (
-                          <span className={cn('inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium', getTaskStatusColor(effectiveStatus))}>
-                            {TASK_STATUS_LABELS[effectiveStatus]}
-                          </span>
-                        )
-                      })()}
-                    </td>
-                    <td className="px-4 py-3"><TaskPriorityBadge priority={task.priority} /></td>
-                    <td className="px-4 py-3">
-                      <Link to="/tasks/$taskId" params={{ taskId: task.id }} className="p-1.5 rounded-lg text-green-500 hover:bg-green-50 transition inline-flex" title="View">
-                        <Eye className="w-3.5 h-3.5" />
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        <div className="flex-shrink-0">
-          <Pagination
-            page={search.page ?? 1}
-            totalPages={tasksData?.totalPages ?? 1}
-            total={tasksData?.total ?? 0}
-            pageSize={PAGE_SIZE}
-            onChange={setPage}
-          />
-        </div>
-      </div>
     </div>
   )
 }

@@ -1,51 +1,33 @@
-import { createFileRoute, Outlet, redirect, useNavigate } from '@tanstack/react-router'
-import { useEffect } from 'react'
-import { Sidebar } from '../components/layout/Sidebar'
-import { Topbar } from '../components/layout/Topbar'
-import { getAccessToken } from '../utils/token'
+import { createFileRoute, Outlet, redirect } from '@tanstack/react-router'
+import { authStore } from '../store/auth.store'
+import Sidebar from '../components/layout/Sidebar'
+import Topbar from '../components/layout/Topbar'
+import ErrorBoundary from '../components/common/ErrorBoundary'
 
-function DashboardNotFound() {
-  return (
-    <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-500">
-      <span className="text-5xl font-bold text-gray-200">404</span>
-      <p className="text-base font-medium text-gray-500">Page not found</p>
-      <p className="text-sm text-gray-400">The page you're looking for doesn't exist.</p>
-    </div>
-  )
-}
+import { useState } from 'react'
 
 export const Route = createFileRoute('/_dashboard')({
-  beforeLoad: ({ location }) => {
-    // Check localStorage directly — Zustand persist hydration is async and may
-    // not complete before beforeLoad runs on a hard refresh.
+  // Redirect to login if not authenticated (client-only: localStorage is not available on the server)
+  beforeLoad: () => {
     if (typeof window === 'undefined') return
-    const token = getAccessToken()
-    if (!token) throw redirect({ to: '/login', search: { redirect: location.href } })
+    const token = authStore.state.accessToken
+    if (!token) throw redirect({ to: '/login' })
   },
   component: DashboardLayout,
-  notFoundComponent: DashboardNotFound,
 })
 
 function DashboardLayout() {
-  const navigate = useNavigate()
-
-  useEffect(() => {
-    const token = getAccessToken()
-    if (!token) {
-      const redirectTo = window.location.pathname + window.location.search + window.location.hash
-      navigate({ to: '/login', search: { redirect: redirectTo }, replace: true })
-    }
-  }, [navigate])
+  const [isCollapsed, setIsCollapsed] = useState(false)
 
   return (
-    <div className="h-screen overflow-hidden bg-[#F7F8FC]">
-      <Sidebar />
-      <div className="ml-[220px] h-screen min-h-0 flex flex-col overflow-hidden">
-        <Topbar />
-        <main className="flex-1 min-h-0 overflow-hidden">
-          <div className="p-6 h-full min-h-0">
+    <div className="flex h-screen bg-orange-50 overflow-hidden">
+      <Sidebar isCollapsed={isCollapsed} setIsCollapsed={setIsCollapsed} />
+      <div className="flex-1 flex flex-col min-w-0">
+        <Topbar onToggleSidebar={() => setIsCollapsed(!isCollapsed)} />
+        <main className="flex-1 flex flex-col overflow-hidden px-6 pt-6">
+          <ErrorBoundary>
             <Outlet />
-          </div>
+          </ErrorBoundary>
         </main>
       </div>
     </div>

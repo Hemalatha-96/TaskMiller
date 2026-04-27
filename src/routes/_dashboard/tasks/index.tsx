@@ -1,362 +1,239 @@
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
-import { useState, useEffect, useRef } from 'react'
-import { ChevronDown, Plus, Eye, Pencil, Trash2 } from 'lucide-react'
-import { useTasks, useDeleteTask, useUpdateTaskStatus, useUpdateTask } from '../../../lib/queries/tasks.queries'
-import { useProjects } from '../../../lib/queries/projects.queries'
-import { TaskForm } from '../../../components/tasks/TaskForm'
-import { ConfirmDeleteModal } from '../../../components/common/ConfirmDeleteModal'
-import { SearchDropdown } from '../../../components/common/SearchDropdown'
-import { Modal } from '../../../components/ui/modal'
-import { Pagination } from '../../../components/ui/Pagination'
-import { AvatarGroup } from '../../../components/ui/avatar'
-import { getTaskStatusColor, getAllowedStatuses, getEffectiveStatus } from '../../../utils/status'
-import { TASK_STATUS_LABELS, TASK_PRIORITY_OPTIONS } from '../../../constants/enums'
-import { formatDate, isOverdue } from '../../../utils/date'
-import { TaskTableSkeleton } from '../../../components/common/TaskTableSkeleton'
-import { useModal } from '../../../hooks/useModal'
-import { useDebounce } from '../../../hooks/useDebounce'
-import { cn } from '../../../utils/cn'
-import type { Task, TaskPriority } from '../../../types/task.types'
+import { useState, useEffect } from 'react'
+import { createFileRoute } from '@tanstack/react-router'
+import {
+  Plus, Search, ChevronDown,
+  CheckCircle2, ListTodo, Timer, AlertCircle, PauseCircle,
+} from 'lucide-react'
+import { type SortingState } from '@tanstack/react-table'
+import { useTasks, useDeleteTaskMutation } from '../../../queries/tasks.queries'
+import { useProjects } from '../../../queries/projects.queries'
 import { useAuth } from '../../../hooks/useAuth'
-import { useOrgStore } from '../../../store/org.store'
+import { useOrgContext } from '../../../store/orgContext.store'
+import { useDebounce } from '../../../hooks/useDebounce'
+import StatsCard from '../../../components/ui/StatsCard'
+import Pagination from '../../../components/ui/Pagination'
+import TaskTable from '../../../components/tasks/TaskTable'
+import ConfirmDeleteModal from '../../../components/common/ConfirmDeleteModal'
+import { StatsSkeleton, TableSkeleton } from '../../../components/ui/Skeleton'
+import ErrorMessage from '../../../components/common/ErrorMessage'
+import type { Task, TaskStatus } from '../../../types/task.types'
+import type { ApiError } from '../../../types/api.types'
 
 export const Route = createFileRoute('/_dashboard/tasks/')({
   validateSearch: (search: Record<string, unknown>) => ({
-    q: (search.q as string) || undefined,
-    status: (search.status as string) || undefined,
+    search:    (search.search as string)    || undefined,
+    status:    ((search.status as string)   || undefined) as TaskStatus | undefined,
     projectId: (search.projectId as string) || undefined,
-    priority: (search.priority as string) || undefined,
-    page: Number(search.page) > 1 ? Number(search.page) : undefined,
+    sortBy:    (search.sortBy as string)    || undefined,
+    sortDir:   (search.sortDir as string) === 'desc' ? 'desc' as const : undefined,
+    page:      Number(search.page)  > 1  ? Number(search.page)  : undefined,
+    limit:     Number(search.limit) > 0 && Number(search.limit) !== 10 ? Number(search.limit) : undefined,
   }),
   component: TasksPage,
 })
 
-function useClickOutside(ref: React.RefObject<HTMLElement | null>, handler: () => void) {
-  useEffect(() => {
-    const listener = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) handler()
-    }
-    document.addEventListener('mousedown', listener)
-    return () => document.removeEventListener('mousedown', listener)
-  }, [ref, handler])
-}
-
-function InlineStatusDropdown({ task }: { task: Task }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  const updateStatus = useUpdateTaskStatus()
-  useClickOutside(ref, () => setOpen(false))
-
-  const effectiveStatus = getEffectiveStatus(task.status, task.dueDate)
-  const allowedStatuses = getAllowedStatuses(effectiveStatus)
-  const canChange = allowedStatuses.length > 0
-
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        onClick={() => canChange && setOpen((v) => !v)}
-        className={cn(
-          'inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium transition-opacity',
-          getTaskStatusColor(effectiveStatus),
-          !canChange ? 'cursor-default' : '',
-          updateStatus.isPending ? 'opacity-60 pointer-events-none' : '',
-        )}
-      >
-        {TASK_STATUS_LABELS[effectiveStatus]}
-        {canChange && <ChevronDown className="w-3 h-3" />}
-      </button>
-      {open && canChange && (
-        <div className="absolute z-30 mt-1 left-0 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[130px] py-1">
-          {allowedStatuses.map((status) => (
-            <button
-              key={status}
-              onClick={() => { updateStatus.mutate({ id: task.id, status }); setOpen(false) }}
-              className={cn('w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 transition-colors', 'text-gray-700')}
-            >
-              {TASK_STATUS_LABELS[status]}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function InlinePriorityDropdown({ task }: { task: Task }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  const updateTask = useUpdateTask()
-  useClickOutside(ref, () => setOpen(false))
-
-  const priorityColors: Record<TaskPriority, string> = {
-    low: 'bg-blue-50 text-blue-600',
-    medium: 'bg-yellow-50 text-yellow-600',
-    high: 'bg-orange-50 text-orange-600',
-    urgent: 'bg-red-50 text-red-600',
-  }
-
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className={cn('inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium transition-opacity', priorityColors[task.priority], updateTask.isPending ? 'opacity-60 pointer-events-none' : '')}
-      >
-        {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
-        <ChevronDown className="w-3 h-3" />
-      </button>
-      {open && (
-        <div className="absolute z-30 mt-1 left-0 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[110px] py-1">
-          {TASK_PRIORITY_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              onClick={() => { updateTask.mutate({ id: task.id, data: { priority: opt.value as TaskPriority } }); setOpen(false) }}
-              className={cn('w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 transition-colors', task.priority === opt.value ? 'font-semibold text-[#F4622A]' : 'text-gray-700')}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-const PAGE_SIZE = 20
-
 function TasksPage() {
-  const search = Route.useSearch()
-  const navigate = useNavigate({ from: Route.fullPath })
+  const { isAdmin, isSuperAdmin, isDeveloper, user } = useAuth()
+  const { selectedOrg }                     = useOrgContext()
 
-  const { orgId, isSuperAdmin, isAdmin } = useAuth()
-  const { activeOrgId } = useOrgStore()
-  const effectiveOrgId = isSuperAdmin ? (activeOrgId ?? undefined) : (orgId ?? undefined)
+  const orgId          = isSuperAdmin && selectedOrg ? selectedOrg.id : undefined
+  const assignedUserId = isDeveloper ? (user?.id ?? undefined) : undefined
 
-  const debouncedQ = useDebounce(search.q ?? '', 400)
+  const navigate = Route.useNavigate()
+  const { search = '', status = '', projectId = '', sortBy = '', sortDir = 'asc', page = 1, limit = 10 } = Route.useSearch()
+  const [deleteTask, setDeleteTask] = useState<Task | null>(null)
 
-  const { data, isLoading } = useTasks({
-    search: debouncedQ,
-    status: search.status,
-    projectId: search.projectId,
-    priority: search.priority,
-    page: search.page ?? 1,
-    limit: PAGE_SIZE,
-    orgId: effectiveOrgId,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const setParams = (params: Record<string, any>) =>
+    navigate({ search: (prev) => ({ ...prev, ...params }) as any })
+
+  const sorting: SortingState = sortBy ? [{ id: sortBy, desc: sortDir === 'desc' }] : []
+
+  useEffect(() => { setParams({ page: undefined }) }, [selectedOrg?.id])
+
+
+  const debouncedSearch = useDebounce(search, 400)
+
+  const sortOrder = sortBy ? sortDir : undefined
+
+  const { data, isLoading, isFetching, isError, error } = useTasks({
+    search:    debouncedSearch || undefined,
+    status:    status     || undefined,
+    projectId: projectId  || undefined,
+    orgId,
+    assignedUserId,
+    sortBy:    sortBy     || undefined,
+    sortOrder,
+    page,
+    limit,
   })
-  const { data: projectsData } = useProjects({ limit: 100, orgId: effectiveOrgId })
-  const { data: todoData } = useTasks({ status: 'to_do', limit: 1, orgId: effectiveOrgId })
-  const { data: inProgressData } = useTasks({ status: 'in_progress', limit: 1, orgId: effectiveOrgId })
-  const { data: completedData } = useTasks({ status: 'completed', limit: 1, orgId: effectiveOrgId })
-  const deleteTask = useDeleteTask()
-  const [deleteError, setDeleteError] = useState('')
-  const createModal = useModal()
-  const editModal = useModal<Task>()
-  const deleteModal = useModal<Task>()
 
-  const tasks = data?.data ?? []
-  const projects = projectsData?.data ?? []
-  const projectMap = Object.fromEntries(projects.map((p) => [p.id, p.title]))
-  const overdueCount = tasks.filter((t) => isOverdue(t.dueDate) && t.status !== 'completed').length
 
-  const setFilter = (updates: Record<string, string | number | undefined>) => {
-    navigate({
-      search: (prev) => ({
-        ...prev,
-        ...Object.fromEntries(Object.entries(updates).map(([k, v]) => [k, v === '' ? undefined : v])),
-        page: undefined,
-      }),
-      replace: true,
-    })
-  }
+  const { data: projectsData } = useProjects({ limit: 100, orgId })
 
-  const setPage = (page: number) => {
-    navigate({ search: (prev) => ({ ...prev, page: page > 1 ? page : undefined }), replace: true })
-  }
+  const { mutate: deleteTaskMutation, isPending: isDeleting } = useDeleteTaskMutation()
 
-  const STATS = [
-    { label: 'Total', value: data?.total ?? 0, color: 'bg-blue-50 text-blue-600' },
-    { label: 'Todo', value: todoData?.total ?? 0, color: 'bg-gray-50 text-gray-600' },
-    { label: 'In Progress', value: inProgressData?.total ?? 0, color: 'bg-purple-50 text-purple-600' },
-    { label: 'Overdue', value: overdueCount, color: 'bg-red-50 text-red-600' },
-    { label: 'Completed', value: completedData?.total ?? 0, color: 'bg-green-50 text-green-600' },
+  const tasks      = data?.tasks      ?? []
+  const pagination = data?.pagination
+  const projects   = projectsData?.projects ?? []
+
+  const totalRecords   = pagination?.totalRecords ?? 0
+  const totalPages     = pagination?.totalPages   ?? 1
+  const activePage     = pagination?.currentPage  ?? page
+  const activeLimit    = pagination?.limit        ?? limit
+  const startEntry     = totalRecords === 0 ? 0 : (activePage - 1) * activeLimit + 1
+  const endEntry       = Math.min(activePage * activeLimit, totalRecords)
+
+  const taskStats = data?.stats
+
+  const stats = [
+    { label: 'Total Tasks',  value: taskStats?.total      ?? 0, iconBg: 'bg-purple-100', icon: <ListTodo     size={17} className="text-purple-500" /> },
+    { label: 'To Do',        value: taskStats?.todo        ?? 0, iconBg: 'bg-blue-100',   icon: <ListTodo     size={17} className="text-blue-500"   /> },
+    { label: 'In Progress',  value: taskStats?.inProgress  ?? 0, iconBg: 'bg-orange-100', icon: <Timer        size={17} className="text-orange-500" /> },
+    { label: 'On Hold',      value: taskStats?.onHold      ?? 0, iconBg: 'bg-yellow-100', icon: <PauseCircle  size={17} className="text-yellow-500" /> },
+    { label: 'Overdue',      value: taskStats?.overdue     ?? 0, iconBg: 'bg-red-100',    icon: <AlertCircle  size={17} className="text-red-500"    /> },
+    { label: 'Completed',    value: taskStats?.completed   ?? 0, iconBg: 'bg-green-100',  icon: <CheckCircle2 size={17} className="text-green-500"  /> },
   ]
 
+  const handleDelete        = () => {
+    if (!deleteTask) return
+    deleteTaskMutation(deleteTask.id, { onSuccess: () => setDeleteTask(null) })
+  }
+  const handleSearch        = (val: string) => setParams({ search: val || undefined, page: undefined })
+  const handleStatusChange  = (val: string) => setParams({ status: val || undefined, page: undefined })
+  const handleProjectChange = (val: string) => setParams({ projectId: val || undefined, page: undefined })
+  const handleLimit         = (val: number) => setParams({ limit: val !== 10 ? val : undefined, page: undefined })
+  const handleSorting       = (updater: any) => {
+    const next: SortingState = typeof updater === 'function' ? updater(sorting) : updater
+    setParams({ sortBy: next[0]?.id || undefined, sortDir: next[0]?.desc ? 'desc' : undefined, page: undefined })
+  }
+
   return (
-    <div className="h-full min-h-0 flex flex-col gap-6">
-      <div className="flex-shrink-0 space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-base font-bold text-gray-900">Tasks</h1>
-            <p className="text-sm text-gray-500">All tasks across your projects</p>
+    <div className="flex flex-col flex-1 overflow-hidden">
+
+      {/* Stats */}
+      <div className="flex-shrink-0 mb-5">
+        {isLoading ? (
+          <StatsSkeleton />
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
+            {stats.map((s) => <StatsCard key={s.label} {...s} />)}
           </div>
-          {isAdmin && (
-            <button
-              onClick={() => createModal.open()}
-              className="inline-flex items-center gap-2 bg-[#F4622A] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#E05520] transition"
-            >
-              <Plus className="w-4 h-4" />Add Task
-            </button>
+        )}
+      </div>
+
+      {/* Table card */}
+      <div className="flex flex-col flex-1 overflow-hidden bg-white rounded-xl border border-gray-100 min-h-0">
+
+        {/* Header */}
+        <div className="flex-shrink-0 flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
+          <h2 className="font-semibold text-gray-800">
+            Tasks List
+            {!isLoading && <span className="text-gray-400 font-normal ml-1.5">({totalRecords})</span>}
+          </h2>
+          <div className="flex items-center gap-2 flex-wrap">
+
+            <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-1.5 bg-gray-50">
+              <Search size={14} className={isFetching ? 'text-orange-400 animate-pulse' : 'text-gray-400'} />
+              <input
+                value={search}
+                onChange={(e) => handleSearch(e.target.value)}
+                placeholder="Search by task"
+                className="bg-transparent outline-none w-32 text-gray-700 placeholder-gray-400 text-xs"
+              />
+            </div>
+
+            <div className="relative">
+              <select
+                value={status}
+                onChange={(e) => handleStatusChange(e.target.value)}
+                className="appearance-none border border-gray-200 rounded-lg pl-3 pr-7 py-1.5 text-xs text-gray-500 bg-gray-50 outline-none cursor-pointer"
+              >
+                <option value="">All Status</option>
+                <option value="to_do">To Do</option>
+                <option value="in_progress">In Progress</option>
+                <option value="on_hold">On Hold</option>
+                <option value="completed">Completed</option>
+              </select>
+              <ChevronDown size={12} className="absolute right-2 top-2.5 text-gray-400 pointer-events-none" />
+            </div>
+
+            <div className="relative">
+              <select
+                value={projectId}
+                onChange={(e) => handleProjectChange(e.target.value)}
+                className="appearance-none border border-gray-200 rounded-lg pl-3 pr-7 py-1.5 text-xs text-gray-500 bg-gray-50 outline-none cursor-pointer"
+              >
+                <option value="">All Projects</option>
+                {projects.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+              </select>
+              <ChevronDown size={12} className="absolute right-2 top-2.5 text-gray-400 pointer-events-none" />
+            </div>
+
+            {isAdmin && (
+              <button
+                onClick={() => navigate({ to: '/tasks/new' })}
+                className="flex items-center gap-1.5 bg-gray-900 text-white px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-gray-800"
+              >
+                <Plus size={13} /> Add Task
+              </button>
+            )}
+
+          </div>
+        </div>
+
+        {/* Table */}
+        <div className="flex-1 overflow-y-auto">
+          {isLoading ? (
+            <div className="p-5">
+              <TableSkeleton rows={8} cols={7} />
+            </div>
+          ) : isError ? (
+            <div className="py-8 px-5">
+              <ErrorMessage message={(error as ApiError)?.message ?? 'Failed to load tasks'} />
+            </div>
+          ) : (
+            <TaskTable
+              tasks={tasks}
+              projects={projects}
+              startEntry={startEntry}
+              isAdmin={isAdmin}
+              sorting={sorting}
+              onSortingChange={handleSorting}
+              onEdit={(task) => navigate({ to: '/tasks/$taskId/edit', params: { taskId: task.id } })}
+              onDelete={setDeleteTask}
+            />
           )}
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-5 gap-3">
-          {STATS.map((s) => (
-            <div key={s.label} className={`${s.color} rounded-lg p-2.5 text-center`}>
-              <div className="text-sm font-bold">{s.value}</div>
-              <div className="text-xs font-medium opacity-70">{s.label}</div>
-            </div>
-          ))}
-        </div>
       </div>
 
-      {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm flex-1 min-h-0 flex flex-col overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b border-gray-100">
-          <h2 className="text-sm font-semibold text-gray-800">Tasks List</h2>
-          <div className="flex flex-wrap items-center gap-2">
-            <SearchDropdown
-              value={search.q || ''}
-              onChange={(q) => setFilter({ q })}
-              onSelect={(item) => navigate({ to: '/tasks/$taskId', params: { taskId: item.id } })}
-              suggestions={tasks.map((t) => ({
-                id: t.id,
-                label: t.name,
-                subtitle: projectMap[t.projectId] ?? t.projectName ?? undefined,
-              }))}
-              placeholder="Search by task..."
-              className="min-w-[220px]"
-            />
-            <select
-              value={search.status || ''}
-              onChange={(e) => setFilter({ status: e.target.value })}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm bg-white focus:outline-none focus:border-[#F4622A]"
-            >
-              <option value="">Select Status</option>
-              <option value="to_do">To Do</option>
-              <option value="in_progress">In Progress</option>
-              <option value="on_hold">On Hold</option>
-              <option value="overdue">Overdue</option>
-              <option value="completed">Completed</option>
-            </select>
-            <select
-              value={search.projectId || ''}
-              onChange={(e) => setFilter({ projectId: e.target.value })}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm bg-white focus:outline-none focus:border-[#F4622A]"
-            >
-              <option value="">All Projects</option>
-              {projects.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
-            </select>
-            <select
-              value={search.priority || ''}
-              onChange={(e) => setFilter({ priority: e.target.value })}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm bg-white focus:outline-none focus:border-[#F4622A]"
-            >
-              <option value="">All Priorities</option>
-              {TASK_PRIORITY_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
-        </div>
+      {/* Pagination */}
+      {!isLoading && !isError && totalPages > 0 && (
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          totalRecords={totalRecords}
+          startEntry={startEntry}
+          endEntry={endEntry}
+          limit={limit}
+          hasPrevPage={pagination?.hasPrevPage}
+          hasNextPage={pagination?.hasNextPage}
+          onPageChange={(p) => setParams({ page: p > 1 ? p : undefined })}
+          onLimitChange={handleLimit}
+        />
+      )}
 
-        {isLoading ? (
-          <TaskTableSkeleton rows={8} includeCreatedBy={true} />
-        ) : (
-          <div className="flex-1 min-h-0 overflow-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="sticky top-0 z-10 bg-white border-b border-gray-50">
-                  {['S.No', 'Project', 'Task Name', 'Assigned User', 'Due Date', 'Created By', 'Status', 'Priority', 'Actions'].map((h) => (
-                    <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {tasks.length === 0 ? (
-                  <tr><td colSpan={9} className="px-4 py-8 text-center text-sm text-gray-400">No tasks found</td></tr>
-                ) : tasks.map((task, i) => (
-                  <tr key={task.id} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="px-4 py-3 text-gray-400 text-xs">{String(((search.page ?? 1) - 1) * PAGE_SIZE + i + 1).padStart(2, '0')}</td>
-                    <td className="px-4 py-3 text-xs font-medium text-gray-600 whitespace-nowrap">{projectMap[task.projectId] ?? task.projectName ?? '—'}</td>
-                    <td className="px-4 py-3">
-                      <Link to="/tasks/$taskId" params={{ taskId: task.id }} className="font-medium text-gray-800 hover:text-[#F4622A] transition-colors whitespace-nowrap">
-                        {task.name}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3"><AvatarGroup names={task.assignees.map((a) => a.name)} max={3} size="xs" /></td>
-                    <td className={cn('px-4 py-3 text-xs whitespace-nowrap', isOverdue(task.dueDate) && task.status !== 'completed' ? 'text-red-500 font-medium' : 'text-gray-500')}>
-                      {formatDate(task.dueDate)}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{task.createdByName}</td>
-                    <td className="px-4 py-3"><InlineStatusDropdown task={task} /></td>
-                    <td className="px-4 py-3"><InlinePriorityDropdown task={task} /></td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <Link to="/tasks/$taskId" params={{ taskId: task.id }} className="p-1.5 rounded-lg text-green-500 hover:bg-green-50 transition inline-flex" title="View">
-                          <Eye className="w-3.5 h-3.5" />
-                        </Link>
-                        {isAdmin && (
-                          <button onClick={() => editModal.open(task)} className="p-1.5 rounded-lg text-[#F4622A] hover:bg-orange-50 transition inline-flex" title="Edit">
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                        {isAdmin && (
-                          <button onClick={() => deleteModal.open(task)} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition inline-flex" title="Delete">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+      {deleteTask  && (
+        <ConfirmDeleteModal
+          title="Delete Task"
+          description={`Are you sure you want to delete "${deleteTask.title}"? This action cannot be undone.`}
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteTask(null)}
+          isLoading={isDeleting}
+        />
+      )}
 
-        <div className="flex-shrink-0">
-          <Pagination
-            page={search.page ?? 1}
-            totalPages={data?.totalPages ?? 1}
-            total={data?.total ?? 0}
-            pageSize={PAGE_SIZE}
-            onChange={setPage}
-          />
-        </div>
-      </div>
-
-      <Modal isOpen={createModal.isOpen} onClose={createModal.close} title="Add Task" size="lg">
-        <TaskForm onSuccess={createModal.close} onCancel={createModal.close} />
-      </Modal>
-
-      <Modal isOpen={editModal.isOpen} onClose={editModal.close} title="Edit Task" size="lg">
-        {editModal.data && (
-          <TaskForm
-            initial={editModal.data}
-            onSuccess={editModal.close}
-            onCancel={editModal.close}
-          />
-        )}
-      </Modal>
-
-      <ConfirmDeleteModal
-        isOpen={deleteModal.isOpen}
-        onClose={() => { deleteModal.close(); setDeleteError('') }}
-        onConfirm={async () => {
-          if (deleteModal.data) {
-            setDeleteError('')
-            try {
-              await deleteTask.mutateAsync(deleteModal.data.id)
-              deleteModal.close()
-            } catch (err: any) {
-              setDeleteError(err?.message ?? 'Failed to delete task.')
-            }
-          }
-        }}
-        loading={deleteTask.isPending}
-        message={`Delete task "${deleteModal.data?.name}"?`}
-        error={deleteError}
-      />
     </div>
   )
 }
