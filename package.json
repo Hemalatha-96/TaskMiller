@@ -12,10 +12,12 @@
     "test": "vitest run",
     "lint": "eslint",
     "format": "prettier --check .",
-    "check": "prettier --write . && eslint --fix"
+    "check": "prettier --write . && eslint --fix",
+    "start": "node .output/server/index.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.18",
+    "@tanstack/nitro-v2-vite-plugin": "^1.154.9",
     "@tanstack/react-devtools": "latest",
     "@tanstack/react-query": "^5.99.0",
     "@tanstack/react-router": "latest",
