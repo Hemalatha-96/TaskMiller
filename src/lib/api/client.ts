@@ -2,7 +2,7 @@ import axios from 'axios'
 import { getAccessToken, getRefreshToken, saveTokens, clearTokens } from '../../utils/token'
 import { useAuthStore } from '../../store/auth.store'
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
+const BASE_URL = import.meta.env.VITE_PUBLIC_API_URL ?? 'http://localhost:3000'
 
 export const apiClient = axios.create({
   baseURL: BASE_URL,
