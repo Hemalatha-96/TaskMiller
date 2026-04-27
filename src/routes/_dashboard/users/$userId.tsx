@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
+import { useState } from 'react'
 import { ChevronLeft, CheckSquare, Clock, AlertTriangle, CircleDot, FolderKanban } from 'lucide-react'
 import { useUser } from '../../../lib/queries/users.queries'
 import { useTasks } from '../../../lib/queries/tasks.queries'
@@ -98,12 +99,20 @@ function UserDetailPage() {
   const { data: user, isLoading, error } = useUser(userId)
   const { data: tasksData,    isLoading: tasksLoading }    = useTasks({ assigneeId: userId, limit: 50 })
   const { data: projectsData, isLoading: projectsLoading } = useProjects({ memberId: userId, limit: 50 })
+  const [taskSearch, setTaskSearch] = useState('')
 
   if (isLoading) return <LoadingSpinner />
   if (error || !user) return <ErrorMessage message="User not found." />
 
   const tasks    = tasksData?.data    ?? []
   const projects = projectsData?.data ?? []
+
+  const filteredTasks = taskSearch.trim()
+    ? tasks.filter((t) =>
+        t.name.toLowerCase().includes(taskSearch.toLowerCase()) ||
+        (t.projectName ?? '').toLowerCase().includes(taskSearch.toLowerCase()),
+      )
+    : tasks
 
   return (
     <div className="h-full overflow-y-auto pr-1">
@@ -163,16 +172,28 @@ function UserDetailPage() {
 
         {/* Tasks Section */}
         <div className="bg-white rounded-xl border border-gray-100">
-          <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+          <div className="px-4 py-3 border-b border-gray-100 flex flex-wrap items-center gap-2 justify-between">
             <h2 className="text-xs font-semibold text-gray-800">Assigned Tasks</h2>
-            <span className="text-xs text-gray-400">{tasks.length} task{tasks.length !== 1 ? 's' : ''}</span>
+            <div className="flex items-center gap-2">
+              <input
+                value={taskSearch}
+                onChange={(e) => setTaskSearch(e.target.value)}
+                placeholder="Search by task..."
+                className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:border-[#F4622A] focus:ring-1 focus:ring-[#F4622A]/20"
+              />
+              <span className="text-xs text-gray-400 whitespace-nowrap">
+                {filteredTasks.length} task{filteredTasks.length !== 1 ? 's' : ''}
+              </span>
+            </div>
           </div>
           {tasksLoading ? (
             <div className="py-8"><LoadingSpinner /></div>
-          ) : tasks.length === 0 ? (
-            <p className="px-4 py-8 text-xs text-gray-400 text-center">No tasks assigned to this user.</p>
+          ) : filteredTasks.length === 0 ? (
+            <p className="px-4 py-8 text-xs text-gray-400 text-center">
+              {taskSearch.trim() ? 'No tasks match your search.' : 'No tasks assigned to this user.'}
+            </p>
           ) : (
-            <div>{tasks.map((t) => <TaskRow key={t.id} task={t} />)}</div>
+            <div>{filteredTasks.map((t) => <TaskRow key={t.id} task={t} />)}</div>
           )}
         </div>
       </div>
