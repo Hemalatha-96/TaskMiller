@@ -41,7 +41,7 @@ export default function OrgForm({ onClose }: OrgFormProps) {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Organization Name</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Organization Name <span className="text-red-500">*</span></label>
             <input
               type="text"
               value={name}
@@ -80,7 +80,7 @@ export default function OrgForm({ onClose }: OrgFormProps) {
             <button
               type="submit"
               disabled={isPending}
-              className="flex-1 bg-orange-500 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-orange-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              className="flex-1 bg-orange-500 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-orange-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
             >
               {isPending ? 'Creating...' : 'Create'}
             </button>

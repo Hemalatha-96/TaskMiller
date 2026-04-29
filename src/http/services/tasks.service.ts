@@ -13,6 +13,8 @@ export function getTasksApi(params: TasksParams = {}): Promise<TasksResponse> {
   if (params.projectId)      query.set('projectId',    params.projectId)
   if (params.orgId)          query.set('orgId',        params.orgId)
   if (params.assignedUserId) query.set('assignedUserId', params.assignedUserId)
+  if (params.dueDateFrom)    query.set('dueDateFrom',  params.dueDateFrom)
+  if (params.dueDateTo)      query.set('dueDateTo',    params.dueDateTo)
   if (params.sortBy)         query.set('sortBy',       params.sortBy)
   if (params.sortOrder)      query.set('order',        params.sortOrder)
   if (params.page)           query.set('page',         String(params.page))

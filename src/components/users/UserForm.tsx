@@ -47,7 +47,7 @@ export default function UserForm({ onClose }: UserFormProps) {
 
           {/* Name */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Name <span className="text-red-500">*</span></label>
             <input
               type="text"
               value={name}
@@ -61,7 +61,7 @@ export default function UserForm({ onClose }: UserFormProps) {
 
           {/* Email */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email <span className="text-red-500">*</span></label>
             <input
               type="email"
               value={email}
@@ -75,7 +75,7 @@ export default function UserForm({ onClose }: UserFormProps) {
 
           {/* Password */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Password <span className="text-red-500">*</span></label>
             <div className="relative">
               <input
                 type={showPass ? 'text' : 'password'}

@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { ChevronDown, Check, Search } from 'lucide-react'
 import { useCreateTaskMutation, useUpdateTaskMutation } from '../../queries/tasks.queries'
-import { useProjects } from '../../queries/projects.queries'
+import { useProjects, useProject } from '../../queries/projects.queries'
 import { useUsers } from '../../queries/users.queries'
 import { useAuth } from '../../hooks/useAuth'
 import { useOrgContext } from '../../store/orgContext.store'
@@ -54,7 +54,20 @@ export default function TaskForm({ onClose, task, parentTaskId, projectId: prePr
   const [memberSearch,  setMemberSearch]  = useState('')
 
   const { data: projectsData } = useProjects({ limit: 100, orgId })
-  const { data: usersData }    = useUsers({ limit: 100, orgId, role: 'developer' })
+  // In edit mode, fetch the task's project directly to reliably get its orgId
+  // regardless of which org the superadmin has selected in the sidebar
+  const { data: taskProject }  = useProject(isEdit ? (task?.projectId ?? '') : '')
+
+  const projects     = projectsData?.projects ?? []
+  const selectedProj = projects.find((p) => p.id === selectedProject)
+
+  // Edit: use the task project's orgId (direct fetch, always correct)
+  // Create: use the selected project's orgId, falling back to the auth orgId
+  const usersOrgId = isEdit
+    ? (taskProject?.orgId ?? selectedProj?.orgId ?? orgId)
+    : (selectedProj?.orgId ?? orgId)
+
+  const { data: usersData }    = useUsers({ limit: 100, orgId: usersOrgId, role: 'developer' })
 
   const { mutate: createTask, isPending: isCreating, error: createError } = useCreateTaskMutation()
   const { mutate: updateTask, isPending: isUpdating, error: updateError } = useUpdateTaskMutation()
@@ -68,17 +81,32 @@ export default function TaskForm({ onClose, task, parentTaskId, projectId: prePr
     {},
   ) ?? {}
 
-  const projects     = projectsData?.projects ?? []
-  const users        = (usersData?.users ?? []).filter((u) => u.role === 'developer')
-  const selectedProj = projects.find((p) => p.id === selectedProject)
+  const fetchedUsers = (usersData?.users ?? []).filter((u) => u.role === 'developer')
+  // Always include already-assigned users so they remain visible in the list
+  const assignedUsers = (task?.assignees ?? []).map((a) => ({
+    id: a.id, name: a.name, email: a.email, avatarUrl: a.avatarUrl,
+    role: 'developer' as const, status: 'active' as const,
+  }))
+  const users = [
+    ...fetchedUsers,
+    ...assignedUsers.filter((a) => !fetchedUsers.some((u) => u.id === a.id)),
+  ]
 
   const filteredProjects = projects.filter((p) =>
     p.title.toLowerCase().includes(projectSearch.toLowerCase()),
   )
-  const filteredUsers = users.filter((u) =>
-    u.name.toLowerCase().includes(memberSearch.toLowerCase()) ||
-    u.email.toLowerCase().includes(memberSearch.toLowerCase()),
-  )
+  const filteredUsers = users
+    .filter((u) =>
+      u.name.toLowerCase().includes(memberSearch.toLowerCase()) ||
+      u.email.toLowerCase().includes(memberSearch.toLowerCase()),
+    )
+    .sort((a, b) => {
+      const aSelected = selectedUserIds.includes(a.id)
+      const bSelected = selectedUserIds.includes(b.id)
+      if (aSelected && !bSelected) return -1
+      if (!aSelected && bSelected) return 1
+      return 0
+    })
 
   const toggleUser = (userId: string) => {
     setSelectedUserIds((prev) =>
@@ -136,7 +164,7 @@ export default function TaskForm({ onClose, task, parentTaskId, projectId: prePr
 
           {/* Title */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Title <span className="text-red-500">*</span></label>
             <input
               type="text"
               value={title}
@@ -165,7 +193,7 @@ export default function TaskForm({ onClose, task, parentTaskId, projectId: prePr
           {/* Project — create mode only, hidden for subtasks (inherited) */}
           {!isEdit && !isSubtask && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Project</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Project <span className="text-red-500">*</span></label>
               <div className="relative">
                 <button
                   type="button"
@@ -297,11 +325,37 @@ export default function TaskForm({ onClose, task, parentTaskId, projectId: prePr
                 onClick={() => setMemberOpen((v) => !v)}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-left flex items-center justify-between outline-none focus:border-orange-400 transition-colors"
               >
-                <span className="text-gray-400">
-                  {selectedUserIds.length === 0
-                    ? 'Select assignees'
-                    : `${selectedUserIds.length} assignee${selectedUserIds.length > 1 ? 's' : ''} selected`}
-                </span>
+                {selectedUserIds.length === 0 ? (
+                  <span className="text-gray-400">Select assignees</span>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center -space-x-2">
+                      {selectedUserIds.slice(0, 4).map((id, i) => {
+                        const u = users.find((u) => u.id === id)
+                        if (!u) return null
+                        return (
+                          <div
+                            key={id}
+                            title={u.name}
+                            className={`w-6 h-6 rounded-full ${avatarColors[i % avatarColors.length]} flex items-center justify-center ring-2 ring-white flex-shrink-0`}
+                          >
+                            <span className="text-white text-[10px] font-semibold">{u.name.charAt(0).toUpperCase()}</span>
+                          </div>
+                        )
+                      })}
+                      {selectedUserIds.length > 4 && (
+                        <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center ring-2 ring-white flex-shrink-0">
+                          <span className="text-gray-600 text-[9px] font-semibold">+{selectedUserIds.length - 4}</span>
+                        </div>
+                      )}
+                    </div>
+                    <span className="text-gray-600 text-xs truncate">
+                      {selectedUserIds.length === 1
+                        ? users.find((u) => u.id === selectedUserIds[0])?.name ?? '1 assignee'
+                        : `${selectedUserIds.length} assignees`}
+                    </span>
+                  </div>
+                )}
                 <ChevronDown size={15} className="text-gray-400 flex-shrink-0" />
               </button>
 

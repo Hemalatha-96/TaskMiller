@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { ArrowLeft, ChevronDown, Pencil, Plus, X, AlignLeft, Eye } from 'lucide-react'
+import { ArrowLeft, ChevronDown, Pencil, Plus, X, AlignLeft } from 'lucide-react'
 import { useTask, useUpdateTaskMutation } from '../../../queries/tasks.queries'
 import { useAttachments } from '../../../queries/attachments.queries'
 import { useProjects } from '../../../queries/projects.queries'
@@ -52,12 +52,11 @@ function allowedStatuses(current: string): TaskStatus[] {
 }
 
 function SubtaskCard({
-  subtask, parentOnHold, onEdit, onView, onStatusChange, isAdmin,
+  subtask, parentOnHold, onEdit, onStatusChange, isAdmin,
 }: {
   subtask: Subtask
   parentOnHold: boolean
   onEdit: (s: Subtask) => void
-  onView: (s: Subtask) => void
   onStatusChange: (id: string, status: TaskStatus) => void
   isAdmin: boolean
 }) {
@@ -120,13 +119,6 @@ function SubtaskCard({
           </p>
         </div>
         <div className="flex items-center gap-1.5">
-          <button
-            onClick={() => onView(subtask)}
-            className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-400 hover:text-gray-600 transition-colors"
-            title="View subtask"
-          >
-            <Eye size={12} />
-          </button>
           {isAdmin && subtask.status !== 'completed' && (
             <button
               onClick={() => onEdit(subtask)}
@@ -378,7 +370,6 @@ function TaskViewPage() {
                       key={s.id}
                       subtask={s}
                       parentOnHold={task.status === 'on_hold'}
-                      onView={(sub) => navigate({ to: '/tasks/$taskId', params: { taskId: sub.id } })}
                       onEdit={(sub) => navigate({ to: '/tasks/$taskId/edit', params: { taskId: sub.id } })}
                       onStatusChange={handleSubtaskStatusChange}
                       isAdmin={isAdmin}

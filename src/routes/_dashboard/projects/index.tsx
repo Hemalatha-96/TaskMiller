@@ -102,7 +102,7 @@ function ProjectsPage() {
             {isAdmin && (
               <button
                 onClick={() => navigate({ to: '/projects/new' })}
-                className="flex items-center gap-1.5 bg-gray-900 text-white px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-gray-800 transition-colors"
+                className="flex items-center gap-1.5 bg-gray-900 text-white px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-gray-800 transition-colors cursor-pointer"
               >
                 <Plus size={13} /> Add Project
               </button>

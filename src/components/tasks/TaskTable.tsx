@@ -105,7 +105,7 @@ export default function TaskTable({
           <div className="flex items-center justify-center gap-2">
             <button
               onClick={() => navigate({ to: '/tasks/$taskId', params: { taskId: task.id } })}
-              className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-100 text-gray-500 transition-colors"
+              className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-100 text-gray-500 transition-colors cursor-pointer"
               title="View"
             >
               <Eye size={13} />
@@ -113,7 +113,7 @@ export default function TaskTable({
             {isAdmin && onEdit && task.status !== 'completed' && (
               <button
                 onClick={() => onEdit(task)}
-                className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-100 text-gray-500 transition-colors"
+                className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-100 text-gray-500 transition-colors cursor-pointer"
                 title="Edit"
               >
                 <Pencil size={13} />
@@ -122,7 +122,7 @@ export default function TaskTable({
             {isAdmin && onDelete && task.status === 'completed' && (
               <button
                 onClick={() => onDelete(task)}
-                className="p-1.5 rounded-lg border border-red-100 hover:bg-red-50 text-red-400 transition-colors"
+                className="p-1.5 rounded-lg border border-red-100 hover:bg-red-50 text-red-400 transition-colors cursor-pointer"
                 title="Delete"
               >
                 <Trash2 size={13} />

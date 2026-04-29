@@ -137,7 +137,7 @@ export default function UpdateProfileForm({ profile, onClose }: UpdateProfileFor
 
           {/* Name */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Name <span className="text-red-500">*</span></label>
             <input
               type="text"
               value={name}

@@ -189,7 +189,7 @@ export default function ProjectForm({ onClose, project }: ProjectFormProps) {
 
           {/* Title */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Title <span className="text-red-500">*</span></label>
             <input
               type="text"
               value={title}
@@ -219,7 +219,7 @@ export default function ProjectForm({ onClose, project }: ProjectFormProps) {
           {/* Org — create mode, superadmin only */}
           {!isEdit && isSuperAdmin && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Organization</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Organization <span className="text-red-500">*</span></label>
               <div className="relative">
                 <button
                   type="button"

@@ -1,4 +1,5 @@
-export type TaskStatus   = 'to_do' | 'in_progress' | 'on_hold' | 'completed'
+export type TaskStatus       = 'to_do' | 'in_progress' | 'on_hold' | 'completed'
+export type TaskStatusFilter = TaskStatus | 'overdue'
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
 
 // ─── Shared user shape returned inside tasks ──────────────────────────────────
@@ -87,10 +88,12 @@ export interface TasksResponse {
 
 export interface TasksParams {
   search?:         string
-  status?:         TaskStatus
+  status?:         TaskStatusFilter
   projectId?:      string
   orgId?:          string
   assignedUserId?: string
+  dueDateFrom?:    string
+  dueDateTo?:      string
   sortBy?:         string
   sortOrder?:      'asc' | 'desc'
   page?:           number

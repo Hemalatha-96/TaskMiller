@@ -136,7 +136,7 @@ export default function AddMemberModal({ mode, orgId, onClose }: AddMemberModalP
             type="button"
             onClick={handleSubmit}
             disabled={!selectedId || isPending}
-            className={`flex-1 text-white py-2.5 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${btnColor}`}
+            className={`flex-1 text-white py-2.5 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ${btnColor}`}
           >
             {isPending ? 'Saving...' : title}
           </button>

@@ -1,4 +1,3 @@
-import { useState }                          from 'react'
 import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import {
   ArrowLeft, Eye,
@@ -20,6 +19,9 @@ import type { UserProjectTask }               from '../../../types/user.types'
 import type { ApiError }                      from '../../../types/api.types'
 
 export const Route = createFileRoute('/_dashboard/users/$userId')({
+  validateSearch: (search: Record<string, unknown>) => ({
+    projectId: (search.projectId as string) || undefined,
+  }),
   beforeLoad: () => {
     const role = authStore.state.user?.role
     if (role === 'developer') throw redirect({ to: '/dashboard', search: {} as any })
@@ -131,6 +133,7 @@ function TasksTable({ tasks, projectTitle }: { tasks: UserProjectTask[]; project
 
 function UserDetailPage() {
   const { userId }  = Route.useParams()
+  const { projectId } = Route.useSearch()
   const navigate    = useNavigate()
   const { isAdmin, user: me } = useAuth()
 
@@ -138,9 +141,12 @@ function UserDetailPage() {
   const { mutate: toggleStatus, isPending: isToggling } = useToggleUserStatusMutation()
 
   const projects = user?.projects ?? []
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
 
-  const selectedProject = projects.find((p) => p.id === selectedProjectId) ?? projects[0]
+  const selectedProject = projects.find((p) => p.id === projectId) ?? projects[0]
+
+  const handleSelectProject = (id: string) => {
+    navigate({ to: '/users/$userId', params: { userId }, search: { projectId: id } })
+  }
 
   if (isLoading) return <UserDetailSkeleton />
 
@@ -211,7 +217,7 @@ function UserDetailPage() {
             <button
               onClick={() => toggleStatus({ id: user.id, status: user.status === 'active' ? 'inactive' : 'active' })}
               disabled={isToggling}
-              className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors disabled:opacity-50 flex-shrink-0 ${
+              className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors disabled:opacity-50 flex-shrink-0 cursor-pointer ${
                 user.status === 'active'
                   ? 'border-red-200 text-red-500 hover:bg-red-50'
                   : 'border-green-200 text-green-600 hover:bg-green-50'
@@ -248,11 +254,11 @@ function UserDetailPage() {
             </div>
             <div className="overflow-y-auto">
               {projects.map((p) => {
-                const isSelected = (selectedProjectId ?? projects[0]?.id) === p.id
+                const isSelected = (projectId ?? projects[0]?.id) === p.id
                 return (
                   <button
                     key={p.id}
-                    onClick={() => setSelectedProjectId(p.id)}
+                    onClick={() => handleSelectProject(p.id)}
                     className={`w-full text-left px-4 py-3 flex items-center justify-between gap-2 transition-colors border-b border-gray-50 last:border-0 ${
                       isSelected ? 'bg-gray-900 text-white' : 'hover:bg-gray-50 text-gray-700'
                     }`}

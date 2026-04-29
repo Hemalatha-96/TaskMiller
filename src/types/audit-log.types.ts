@@ -1,3 +1,9 @@
+export interface AuditLogChange {
+  field: string
+  from: string
+  to: string
+}
+
 export interface AuditLog {
   id: string
   orgId: string
@@ -5,10 +11,15 @@ export interface AuditLog {
   action: string
   entityType: 'task' | 'project' | string
   entityId: string
-  before: string | null
-  after: string | null
+  before: string | Record<string, unknown> | null
+  after: string | Record<string, unknown> | null
   ipAddress: string
   createdAt: string
+  entityName?: string
+  projectName?: string
+  parentTaskName?: string
+  changes?: AuditLogChange[]
+  description?: string
   actor: {
     id: string
     name: string
@@ -34,9 +45,12 @@ export interface AuditLogListResponse {
 }
 
 export interface AuditLogParams {
-  page?: number
-  limit?: number
+  id?:        string
+  page?:      number
+  limit?:     number
   entityType?: string
-  entityId?: string
-  orgId?: string
+  entityId?:  string
+  orgId?:     string
+  dateFrom?:  string
+  dateTo?:    string
 }

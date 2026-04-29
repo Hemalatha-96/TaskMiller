@@ -146,7 +146,7 @@ function OrgDetailPage() {
                   onClick={() => navigate({ to: '/organizations/$orgId/add-member', params: { orgId: slug }, search: { mode: 'admin' } })}
                   disabled={!!adminMember}
                   title={adminMember ? 'This org already has an admin' : 'Assign admin'}
-                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-blue-200 text-blue-600 hover:bg-blue-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-blue-200 text-blue-600 hover:bg-blue-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                 >
                   <UserPlus size={13} /> Assign Admin
                 </button>
@@ -188,7 +188,7 @@ function OrgDetailPage() {
               {isAdmin && (
                 <button
                   onClick={() => navigate({ to: '/organizations/$orgId/add-member', params: { orgId: slug }, search: { mode: 'developer' } })}
-                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-green-200 text-green-600 hover:bg-green-50 transition-colors"
+                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-green-200 text-green-600 hover:bg-green-50 transition-colors cursor-pointer"
                 >
                   <Plus size={13} /> Add Developer
                 </button>
@@ -384,7 +384,7 @@ function MemberRow({
         ) : (
           <button
             onClick={onRemoveClick}
-            className="p-1.5 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0"
+            className="p-1.5 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0 cursor-pointer"
             title="Remove member"
           >
             <Trash2 size={13} />

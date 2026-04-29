@@ -13,21 +13,24 @@ import { useDebounce } from '../../../hooks/useDebounce'
 import StatsCard from '../../../components/ui/StatsCard'
 import Pagination from '../../../components/ui/Pagination'
 import TaskTable from '../../../components/tasks/TaskTable'
+import DateRangePicker from '../../../components/ui/DateRangePicker'
 import ConfirmDeleteModal from '../../../components/common/ConfirmDeleteModal'
 import { StatsSkeleton, TableSkeleton } from '../../../components/ui/Skeleton'
 import ErrorMessage from '../../../components/common/ErrorMessage'
-import type { Task, TaskStatus } from '../../../types/task.types'
+import type { Task, TaskStatusFilter } from '../../../types/task.types'
 import type { ApiError } from '../../../types/api.types'
 
 export const Route = createFileRoute('/_dashboard/tasks/')({
   validateSearch: (search: Record<string, unknown>) => ({
-    search:    (search.search as string)    || undefined,
-    status:    ((search.status as string)   || undefined) as TaskStatus | undefined,
-    projectId: (search.projectId as string) || undefined,
-    sortBy:    (search.sortBy as string)    || undefined,
-    sortDir:   (search.sortDir as string) === 'desc' ? 'desc' as const : undefined,
-    page:      Number(search.page)  > 1  ? Number(search.page)  : undefined,
-    limit:     Number(search.limit) > 0 && Number(search.limit) !== 10 ? Number(search.limit) : undefined,
+    search:       (search.search as string)       || undefined,
+    status:       ((search.status as string)      || undefined) as TaskStatusFilter | undefined,
+    projectId:    (search.projectId as string)    || undefined,
+    dueDateFrom:  (search.dueDateFrom as string)  || undefined,
+    dueDateTo:    (search.dueDateTo as string)    || undefined,
+    sortBy:       (search.sortBy as string)       || undefined,
+    sortDir:      (search.sortDir as string) === 'desc' ? 'desc' as const : undefined,
+    page:         Number(search.page)  > 1  ? Number(search.page)  : undefined,
+    limit:        Number(search.limit) > 0 && Number(search.limit) !== 10 ? Number(search.limit) : undefined,
   }),
   component: TasksPage,
 })
@@ -40,7 +43,7 @@ function TasksPage() {
   const assignedUserId = isDeveloper ? (user?.id ?? undefined) : undefined
 
   const navigate = Route.useNavigate()
-  const { search = '', status = '', projectId = '', sortBy = '', sortDir = 'asc', page = 1, limit = 10 } = Route.useSearch()
+  const { search = '', status = '', projectId = '', dueDateFrom, dueDateTo, sortBy = '', sortDir = 'asc', page = 1, limit = 10 } = Route.useSearch()
   const [deleteTask, setDeleteTask] = useState<Task | null>(null)
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -57,12 +60,14 @@ function TasksPage() {
   const sortOrder = sortBy ? sortDir : undefined
 
   const { data, isLoading, isFetching, isError, error } = useTasks({
-    search:    debouncedSearch || undefined,
-    status:    status     || undefined,
-    projectId: projectId  || undefined,
+    search:       debouncedSearch || undefined,
+    status:       status     || undefined,
+    projectId:    projectId  || undefined,
     orgId,
     assignedUserId,
-    sortBy:    sortBy     || undefined,
+    dueDateFrom,
+    dueDateTo,
+    sortBy:       sortBy     || undefined,
     sortOrder,
     page,
     limit,
@@ -102,6 +107,8 @@ function TasksPage() {
   const handleSearch        = (val: string) => setParams({ search: val || undefined, page: undefined })
   const handleStatusChange  = (val: string) => setParams({ status: val || undefined, page: undefined })
   const handleProjectChange = (val: string) => setParams({ projectId: val || undefined, page: undefined })
+  const handleDateRange     = (range: { from: string | undefined; to: string | undefined }) =>
+    setParams({ dueDateFrom: range.from || undefined, dueDateTo: range.to || undefined, page: undefined })
   const handleLimit         = (val: number) => setParams({ limit: val !== 10 ? val : undefined, page: undefined })
   const handleSorting       = (updater: any) => {
     const next: SortingState = typeof updater === 'function' ? updater(sorting) : updater
@@ -153,6 +160,7 @@ function TasksPage() {
                 <option value="to_do">To Do</option>
                 <option value="in_progress">In Progress</option>
                 <option value="on_hold">On Hold</option>
+                <option value="overdue">Overdue</option>
                 <option value="completed">Completed</option>
               </select>
               <ChevronDown size={12} className="absolute right-2 top-2.5 text-gray-400 pointer-events-none" />
@@ -170,10 +178,15 @@ function TasksPage() {
               <ChevronDown size={12} className="absolute right-2 top-2.5 text-gray-400 pointer-events-none" />
             </div>
 
+            <DateRangePicker
+              value={{ from: dueDateFrom, to: dueDateTo }}
+              onChange={handleDateRange}
+            />
+
             {isAdmin && (
               <button
                 onClick={() => navigate({ to: '/tasks/new' })}
-                className="flex items-center gap-1.5 bg-gray-900 text-white px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-gray-800"
+                className="flex items-center gap-1.5 bg-gray-900 text-white px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-gray-800 cursor-pointer"
               >
                 <Plus size={13} /> Add Task
               </button>

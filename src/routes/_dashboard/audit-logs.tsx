@@ -6,6 +6,7 @@ import { useAuth } from '../../hooks/useAuth'
 import { useOrgContext } from '../../store/orgContext.store'
 import AuditLogTable from '../../components/audit-logs/AuditLogTable'
 import Pagination from '../../components/ui/Pagination'
+import DateRangePicker from '../../components/ui/DateRangePicker'
 import { TableSkeleton } from '../../components/ui/Skeleton'
 import ErrorMessage from '../../components/common/ErrorMessage'
 import type { ApiError } from '../../types/api.types'
@@ -18,6 +19,9 @@ export const Route = createFileRoute('/_dashboard/audit-logs')({
   validateSearch: (search: Record<string, unknown>) => ({
     entityType: (search.entityType as string) || undefined,
     entityId:   (search.entityId   as string) || undefined,
+    dateFrom:   (search.dateFrom   as string) || undefined,
+    dateTo:     (search.dateTo     as string) || undefined,
+    viewId:     (search.viewId     as string) || undefined,
     page:       Number(search.page)  > 1  ? Number(search.page)  : undefined,
     limit:      Number(search.limit) > 0 && Number(search.limit) !== 20 ? Number(search.limit) : undefined,
   }),
@@ -31,7 +35,7 @@ function AuditLogsPage() {
   const orgId = isSuperAdmin && selectedOrg ? selectedOrg.id : undefined
 
   const navigate = Route.useNavigate()
-  const { entityType = '', entityId = '', page = 1, limit = 20 } = Route.useSearch()
+  const { entityType = '', entityId = '', dateFrom, dateTo, viewId, page = 1, limit = 20 } = Route.useSearch()
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const setParams = (params: Record<string, any>) =>
@@ -41,6 +45,8 @@ function AuditLogsPage() {
     orgId,
     entityType: entityType || undefined,
     entityId:   entityId   || undefined,
+    dateFrom,
+    dateTo,
     page,
     limit,
   })
@@ -100,6 +106,12 @@ function AuditLogsPage() {
               </div>
             )}
 
+            <DateRangePicker
+              value={{ from: dateFrom, to: dateTo }}
+              onChange={(range) => setParams({ dateFrom: range.from || undefined, dateTo: range.to || undefined, page: undefined })}
+              label="Date"
+            />
+
           </div>
         </div>
 
@@ -114,7 +126,13 @@ function AuditLogsPage() {
               <ErrorMessage message={(error as ApiError)?.message ?? 'Failed to load audit logs'} />
             </div>
           ) : (
-            <AuditLogTable logs={logs} startEntry={startEntry} />
+            <AuditLogTable
+              logs={logs}
+              startEntry={startEntry}
+              viewLogId={viewId ?? null}
+              onView={(id) => setParams({ viewId: id })}
+              onCloseView={() => setParams({ viewId: undefined })}
+            />
           )}
         </div>
 

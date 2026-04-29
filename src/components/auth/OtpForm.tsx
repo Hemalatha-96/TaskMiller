@@ -82,7 +82,7 @@ export default function OtpForm() {
 
             <form onSubmit={handleRequestOtp} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email Address <span className="text-red-500">*</span></label>
                 <input
                   type="email"
                   value={email}
@@ -117,7 +117,7 @@ export default function OtpForm() {
 
             <form onSubmit={handleVerifyOtp} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">6-digit Code</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">6-digit Code <span className="text-red-500">*</span></label>
                 <input
                   type="text"
                   value={otp}
