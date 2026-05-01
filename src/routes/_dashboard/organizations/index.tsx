@@ -129,10 +129,10 @@ function OrganizationsPage() {
           <ArrowLeft size={15} /> Back to Organizations
         </button>
 
-        <div className="flex gap-5 items-start">
+        <div className="flex flex-col lg:flex-row gap-5 items-start w-full">
 
           {/* ── Left panel ───────────────────────────────────────────────── */}
-          <div className="flex-1 space-y-4">
+          <div className="flex-1 space-y-4 w-full">
 
             {/* Header card */}
             <div className="bg-white rounded-xl border border-gray-100 p-5">
@@ -309,7 +309,7 @@ function OrganizationsPage() {
           </div>
 
           {/* ── Right panel ──────────────────────────────────────────────── */}
-          <div className="w-52 flex-shrink-0">
+          <div className="w-full lg:w-52 flex-shrink-0">
             <div className="bg-white rounded-xl border border-gray-100 p-4">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Details</p>
               <div className="space-y-3">
@@ -352,9 +352,9 @@ function OrganizationsPage() {
 
   // ── List / card page ─────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+    <div className="flex flex-col flex-1 min-h-0 overflow-auto pb-6">
 
-      <div className="flex flex-col flex-1 min-h-0 overflow-hidden bg-white rounded-xl border border-gray-100">
+      <div className="flex flex-col flex-shrink-0 bg-white rounded-xl border border-gray-100 mb-6">
 
         <div className="flex-shrink-0 flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
           <h2 className="font-semibold text-gray-800">
@@ -393,7 +393,7 @@ function OrganizationsPage() {
           </div>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="min-w-max md:min-w-0">
           {isLoading ? (
             <div className="p-5 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
               {[1,2,3,4,5,6,7,8].map((i) => <CardSkeleton key={i} />)}

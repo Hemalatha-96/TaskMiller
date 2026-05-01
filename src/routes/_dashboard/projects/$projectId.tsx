@@ -102,7 +102,7 @@ function ProjectViewPage() {
   const pagedMembers    = project.members.slice((membersPage - 1) * membersLimit, membersPage * membersLimit)
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 gap-4 overflow-hidden">
+    <div className="flex flex-col flex-1 min-h-0 gap-4 overflow-y-auto pb-6">
 
       {/* Back */}
       <button
@@ -112,10 +112,10 @@ function ProjectViewPage() {
         <ArrowLeft size={15} /> Back to Projects
       </button>
 
-      <div className="flex flex-1 gap-5 min-h-0">
+      <div className="flex flex-col lg:flex-row gap-5 items-start">
 
         {/* ── Left panel ────────────────────────────────────────────────── */}
-        <div className="flex flex-col flex-1 min-h-0 gap-4 overflow-hidden">
+        <div className="flex flex-col flex-1 min-w-0 gap-4 w-full">
 
           {/* Header card */}
           <div className="bg-white rounded-xl border border-gray-100 p-5">
@@ -238,7 +238,7 @@ function ProjectViewPage() {
               </div>
 
               {/* Scrollable table */}
-              <div className="flex-1 overflow-y-auto">
+              <div className="flex-1 overflow-auto">
                 {totalMembers === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 text-gray-400">
                     <p className="text-sm">No members assigned</p>
@@ -311,7 +311,7 @@ function ProjectViewPage() {
         </div>{/* end left panel */}
 
         {/* ── Right panel — unified stats card ──────────────────────────── */}
-        <div className="w-64 flex-shrink-0 overflow-y-auto">
+        <div className="w-full lg:w-64 flex-shrink-0">
           <div className="bg-white rounded-xl border border-gray-100 p-5">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Statistics</p>
             <div className="space-y-3">

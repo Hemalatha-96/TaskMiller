@@ -182,7 +182,7 @@ function ProjectsPage() {
     const pagedMembers     = projectDetail.members.slice((membersPage - 1) * membersLimit, membersPage * membersLimit)
 
     return (
-      <div className="flex flex-col flex-1 min-h-0 gap-4 overflow-hidden">
+      <div className="flex flex-col flex-1 min-h-0 gap-4 overflow-y-auto pb-6">
 
         <button
           onClick={() => setParams({ view: viewMode })}
@@ -191,10 +191,10 @@ function ProjectsPage() {
           <ArrowLeft size={15} /> Back to Projects
         </button>
 
-        <div className="flex flex-1 gap-5 min-h-0">
+        <div className="flex flex-col lg:flex-row flex-1 gap-5 items-start">
 
           {/* ── Left panel ─────────────────────────────────────────────── */}
-          <div className="flex flex-col flex-1 min-h-0 gap-4 overflow-hidden">
+          <div className="flex flex-col flex-1 min-w-0 gap-4 w-full">
 
             {/* Header card */}
             <div className="bg-white rounded-xl border border-gray-100 p-5">
@@ -299,7 +299,7 @@ function ProjectsPage() {
                     </span>
                   </h3>
                 </div>
-                <div className="flex-1 overflow-y-auto">
+                <div className="flex-1 overflow-auto">
                   {totalMembers === 0 ? (
                     <div className="flex flex-col items-center justify-center py-12 text-gray-400">
                       <p className="text-sm">No members assigned</p>
@@ -369,7 +369,7 @@ function ProjectsPage() {
           </div>
 
           {/* ── Right panel — stats ─────────────────────────────────────── */}
-          <div className="w-64 flex-shrink-0 overflow-y-auto">
+          <div className="w-full lg:w-64 flex-shrink-0">
             <div className="bg-white rounded-xl border border-gray-100 p-5">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Statistics</p>
               <div className="space-y-3">
@@ -395,9 +395,9 @@ function ProjectsPage() {
 
   // ── List / card page ─────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+    <div className="flex flex-col flex-1 min-h-0 overflow-auto pb-6">
 
-      <div className="flex flex-col flex-1 min-h-0 overflow-hidden bg-white rounded-xl border border-gray-100">
+      <div className="flex flex-col flex-shrink-0 bg-white rounded-xl border border-gray-100 mb-6">
 
         {/* Header */}
         <div className="flex-shrink-0 flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
@@ -461,7 +461,7 @@ function ProjectsPage() {
         </div>
 
         {/* Content */}
-        <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="min-w-max md:min-w-0">
           {isLoading ? (
             isCard ? (
               <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

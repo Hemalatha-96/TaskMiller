@@ -155,7 +155,7 @@ function DashboardPage() {
   // ── Super Admin View ─────────────────────────────────────────────────────────
   if (isSuperAdminView) {
     return (
-      <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+      <div className="flex flex-col flex-1 min-h-0 overflow-auto pb-6">
 
         {/* Stats */}
         <div className="flex-shrink-0 mb-5">
@@ -169,7 +169,7 @@ function DashboardPage() {
         </div>
 
         {/* Organizations — list / card */}
-        <div className="flex flex-col flex-1 overflow-hidden bg-white rounded-xl border border-gray-100 min-h-0">
+        <div className="flex flex-col flex-shrink-0 bg-white rounded-xl border border-gray-100 mb-6">
 
           {/* Header */}
           <div className="flex-shrink-0 flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
@@ -197,7 +197,7 @@ function DashboardPage() {
           </div>
 
           {/* Body */}
-          <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="min-w-max md:min-w-0">
             {isLoadingOrgs ? (
               orgView === 'list' ? (
                 <div className="p-5"><TableSkeleton rows={6} cols={9} /></div>
@@ -307,7 +307,7 @@ function DashboardPage() {
   }
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden">
+    <div className="flex flex-col flex-1 min-h-0 overflow-auto pb-6">
 
       {/* Stats */}
       <div className="flex-shrink-0 mb-5">
@@ -321,7 +321,7 @@ function DashboardPage() {
       </div>
 
       {/* Tasks List */}
-      <div className="flex flex-col flex-1 overflow-hidden bg-white rounded-xl border border-gray-100 min-h-0">
+      <div className="flex flex-col flex-shrink-0 bg-white rounded-xl border border-gray-100 mb-6">
 
         {/* Header */}
         <div className="flex-shrink-0 flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
@@ -378,7 +378,7 @@ function DashboardPage() {
         </div>
 
         {/* Table */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="min-w-max md:min-w-0">
           {isLoadingTasks ? (
             <div className="p-5">
               <TableSkeleton rows={8} cols={7} />

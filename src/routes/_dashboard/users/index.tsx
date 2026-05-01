@@ -106,10 +106,10 @@ function UsersPage() {
   }
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+    <div className="flex flex-col flex-1 min-h-0 overflow-auto pb-6">
 
       {/* Table card */}
-      <div className="flex flex-col flex-1 min-h-0 overflow-hidden bg-white rounded-xl border border-gray-100">
+      <div className="flex flex-col flex-shrink-0 bg-white rounded-xl border border-gray-100 mb-6">
 
         {/* Header */}
         <div className="flex-shrink-0 flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
@@ -170,7 +170,7 @@ function UsersPage() {
         </div>
 
         {/* Content */}
-        <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="min-w-max md:min-w-0">
           {isLoading ? (
             <div className="p-5">
               <TableSkeleton rows={10} cols={8} />
