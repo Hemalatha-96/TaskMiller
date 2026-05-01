@@ -195,7 +195,7 @@ function TaskViewPage() {
   const allowed = allowedStatuses(task.status)
 
   return (
-    <div className="flex flex-col flex-1 gap-4 overflow-hidden">
+    <div className="flex flex-col flex-1 min-h-0 gap-4 overflow-hidden">
 
       {/* Back */}
       <button
@@ -349,7 +349,7 @@ function TaskViewPage() {
           </div>
 
           {/* Scrollable tab content */}
-          <div className="flex-1 overflow-y-auto px-6 pb-6 pt-4">
+          <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-6 pt-4">
 
             {/* Subtasks tab */}
             {activeTab === 'subtasks' && (

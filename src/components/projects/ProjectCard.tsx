@@ -7,6 +7,7 @@ import type { Project } from '../../types/project.types'
 interface ProjectCardProps {
   project: Project
   index:   number
+  onView?: (id: string) => void
 }
 
 const cardColors = [
@@ -22,7 +23,7 @@ const statusLabel: Record<string, string> = {
   completed: 'Completed',
 }
 
-export default function ProjectCard({ project, index }: ProjectCardProps) {
+export default function ProjectCard({ project, index, onView }: ProjectCardProps) {
   const navigate = useNavigate()
   const color    = cardColors[index % cardColors.length]
   const initials = project.title.slice(0, 2).toUpperCase()
@@ -35,7 +36,7 @@ export default function ProjectCard({ project, index }: ProjectCardProps) {
 
   return (
     <div
-      onClick={() => navigate({ to: '/projects/$projectId', params: { projectId: project.id } })}
+      onClick={() => onView ? onView(project.id) : navigate({ to: '/projects/$projectId', params: { projectId: project.id } })}
       className="bg-white border border-gray-100 rounded-xl p-5 hover:shadow-md hover:border-orange-100 cursor-pointer transition-all group"
     >
       {/* Logo */}

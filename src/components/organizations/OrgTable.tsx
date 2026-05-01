@@ -1,15 +1,61 @@
-import { useNavigate } from '@tanstack/react-router'
-import { Building2, ArrowRight, Calendar } from 'lucide-react'
+import { Building2, Eye, Loader2 } from 'lucide-react'
 import type { Organization } from '../../types/org.types'
-import { userColor, formatDate } from '../../lib/utils'
+import { userColor } from '../../lib/utils'
+import { useProjects } from '../../queries/projects.queries'
+import { useTasks } from '../../queries/tasks.queries'
 
 interface OrgTableProps {
-  orgs: Organization[]
+  orgs:   Organization[]
+  onView: (org: Organization) => void
 }
 
-export default function OrgTable({ orgs }: OrgTableProps) {
-  const navigate = useNavigate()
+function OrgTableRow({ org, idx, onView }: { org: Organization; idx: number; onView: (org: Organization) => void }) {
+  const { data: projData,  isLoading: isProjLoading  } = useProjects({ orgId: org.id, limit: 1 })
+  const { data: tasksData, isLoading: isTasksLoading } = useTasks({ orgId: org.id, limit: 1 })
+  const isLoading = isProjLoading || isTasksLoading
+  const color = userColor(org.id)
 
+  const cell = (value: number | undefined, colorClass?: string) => {
+    if (isLoading) return <Loader2 size={12} className="animate-spin text-gray-400 mx-auto" />
+    if (value === undefined) return <span className="text-gray-300">—</span>
+    return <span className={`font-semibold ${colorClass ?? 'text-gray-700'}`}>{value}</span>
+  }
+
+  return (
+    <tr className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+      <td className="px-4 py-3 text-xs text-gray-400">{idx + 1}</td>
+
+      <td className="px-4 py-3">
+        <div className="flex items-center gap-3">
+          <div className={`w-8 h-8 rounded-lg ${color} flex items-center justify-center flex-shrink-0`}>
+            <span className="text-white font-bold text-xs">{org.name.charAt(0).toUpperCase()}</span>
+          </div>
+          <span className="text-sm font-semibold text-gray-800">{org.name}</span>
+        </div>
+      </td>
+
+      <td className="px-4 py-3 text-center text-xs">{cell(projData?.pagination.totalRecords, 'text-blue-600')}</td>
+      <td className="px-4 py-3 text-center text-xs">{cell(tasksData?.stats.total,      'text-gray-700')}</td>
+      <td className="px-4 py-3 text-center text-xs">{cell(tasksData?.stats.completed,  'text-green-600')}</td>
+      <td className="px-4 py-3 text-center text-xs">{cell(tasksData?.stats.inProgress, 'text-blue-500')}</td>
+      <td className="px-4 py-3 text-center text-xs">{cell(tasksData?.stats.todo,       'text-gray-500')}</td>
+      <td className="px-4 py-3 text-center text-xs">{cell(tasksData?.stats.overdue,    'text-red-500')}</td>
+      <td className="px-4 py-3 text-center text-xs">{cell(tasksData?.stats.onHold,     'text-orange-500')}</td>
+
+      <td className="px-4 py-3 text-center">
+        <button
+          onClick={() => onView(org)}
+          className="text-gray-400 hover:text-blue-500 cursor-pointer transition-colors"
+          title="View in Admin"
+        >
+          <Eye size={15} />
+        </button>
+      </td>
+    </tr>
+  )
+}
+
+export default function OrgTable({ orgs, onView }: OrgTableProps) {
   if (orgs.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -23,38 +69,26 @@ export default function OrgTable({ orgs }: OrgTableProps) {
   }
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 p-5">
-      {orgs.map((org) => {
-        const color = userColor(org.id)
-        return (
-          <div
-            key={org.id}
-            onClick={() => navigate({ to: '/organizations/$orgId', params: { orgId: org.slug } })}
-            className="group relative bg-white border border-gray-100 rounded-xl p-4 hover:border-orange-200 hover:shadow-md cursor-pointer transition-all"
-          >
-            {/* Arrow */}
-            <ArrowRight
-              size={13}
-              className="absolute top-3.5 right-3.5 text-gray-300 group-hover:text-orange-400 transition-colors"
-            />
-
-            {/* Avatar */}
-            <div className={`w-10 h-10 rounded-xl ${color} flex items-center justify-center mb-3`}>
-              <span className="text-white font-bold text-sm">{org.name.charAt(0)}</span>
-            </div>
-
-            {/* Name + Slug */}
-            <p className="font-semibold text-gray-800 text-sm leading-snug">{org.name}</p>
-            <p className="text-xs text-gray-400 mt-0.5 mb-3">/{org.slug}</p>
-
-            {/* Date */}
-            <div className="flex items-center gap-1.5 text-xs text-gray-400 border-t border-gray-50 pt-2.5">
-              <Calendar size={11} />
-              <span>{formatDate(org.createdAt)}</span>
-            </div>
-          </div>
-        )
-      })}
-    </div>
+    <table className="w-full text-sm">
+      <thead className="sticky top-0 z-10">
+        <tr className="border-b border-gray-200 text-xs text-gray-600 font-semibold uppercase tracking-wide">
+          <th className="px-4 py-3 text-left w-10 bg-[#ccfbf1]">S.No</th>
+          <th className="px-4 py-3 text-left bg-[#ccfbf1]">Organization</th>
+          <th className="px-4 py-3 text-center bg-[#ccfbf1]">Projects</th>
+          <th className="px-4 py-3 text-center bg-[#ccfbf1]">Tasks</th>
+          <th className="px-4 py-3 text-center bg-[#ccfbf1]">Completed</th>
+          <th className="px-4 py-3 text-center bg-[#ccfbf1]">In Progress</th>
+          <th className="px-4 py-3 text-center bg-[#ccfbf1]">To Do</th>
+          <th className="px-4 py-3 text-center bg-[#ccfbf1]">Overdue</th>
+          <th className="px-4 py-3 text-center bg-[#ccfbf1]">On Hold</th>
+          <th className="px-4 py-3 w-12 bg-[#ccfbf1]" />
+        </tr>
+      </thead>
+      <tbody>
+        {orgs.map((org, idx) => (
+          <OrgTableRow key={org.id} org={org} idx={idx} onView={onView} />
+        ))}
+      </tbody>
+    </table>
   )
 }

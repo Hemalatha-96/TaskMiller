@@ -22,9 +22,9 @@ function DashboardLayout() {
   return (
     <div className="flex h-screen bg-orange-50 overflow-hidden">
       <Sidebar isCollapsed={isCollapsed} setIsCollapsed={setIsCollapsed} />
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
         <Topbar onToggleSidebar={() => setIsCollapsed(!isCollapsed)} />
-        <main className="flex-1 flex flex-col overflow-hidden px-6 pt-6">
+        <main className="flex-1 flex flex-col overflow-y-auto min-h-0 px-6 pt-6 pb-6">
           <ErrorBoundary>
             <Outlet />
           </ErrorBoundary>

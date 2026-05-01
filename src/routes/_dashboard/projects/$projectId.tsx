@@ -2,10 +2,12 @@ import { useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import {
   ArrowLeft, Pencil, Trash2,
-  ListTodo, Timer, AlertCircle, CheckCircle2, LayoutList, PauseCircle,
+  ListTodo, Timer, AlertCircle, CheckCircle2, LayoutList, PauseCircle, Download,
 } from 'lucide-react'
 import { useProject, useDeleteProjectMutation } from '../../../queries/projects.queries'
 import { useAuth } from '../../../hooks/useAuth'
+import { exportProjectTasksApi } from '../../../http/services/export.service'
+import { downloadProjectCsv } from '../../../lib/exportCsv'
 import { ProjectDetailSkeleton } from '../../../components/ui/Skeleton'
 import ErrorMessage from '../../../components/common/ErrorMessage'
 import S3Image from '../../../components/ui/S3Image'
@@ -42,6 +44,24 @@ function ProjectViewPage() {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [membersPage,  setMembersPage]  = useState(1)
   const [membersLimit, setMembersLimit] = useState(10)
+  const [isExporting,  setIsExporting]  = useState(false)
+  const [exportError,  setExportError]  = useState<string | null>(null)
+
+  const handleExportTasks = async () => {
+    if (isExporting) return
+    setIsExporting(true)
+    setExportError(null)
+    try {
+      const data = await exportProjectTasksApi(projectId)
+      downloadProjectCsv(data)
+    } catch (err) {
+      const msg = (err as ApiError)?.message ?? 'Export failed. Please try again.'
+      setExportError(msg)
+      console.error('[Export] Failed to export tasks:', err)
+    } finally {
+      setIsExporting(false)
+    }
+  }
 
   const handleDelete = () => {
     deleteProject(projectId, {
@@ -82,7 +102,7 @@ function ProjectViewPage() {
   const pagedMembers    = project.members.slice((membersPage - 1) * membersLimit, membersPage * membersLimit)
 
   return (
-    <div className="flex flex-col flex-1 gap-4 overflow-hidden">
+    <div className="flex flex-col flex-1 min-h-0 gap-4 overflow-hidden">
 
       {/* Back */}
       <button
@@ -127,36 +147,49 @@ function ProjectViewPage() {
 
               {/* Actions */}
               {isAdmin && (
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <button
-                    onClick={() => navigate({ to: '/projects/$projectId/edit', params: { projectId } })}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    <Pencil size={13} /> Edit
-                  </button>
-                  {confirmDelete ? (
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => setConfirmDelete(false)}
-                        className="px-2.5 py-1.5 text-xs border border-gray-200 text-gray-500 rounded-lg hover:bg-gray-50 transition-colors"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={handleDelete}
-                        disabled={isDeleting}
-                        className="px-2.5 py-1.5 text-xs font-medium bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors disabled:opacity-60"
-                      >
-                        {isDeleting ? 'Deleting...' : 'Confirm'}
-                      </button>
-                    </div>
-                  ) : (
+                <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                  <div className="flex items-center gap-2">
                     <button
-                      onClick={() => setConfirmDelete(true)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-red-200 text-red-500 rounded-lg hover:bg-red-50 transition-colors"
+                      onClick={handleExportTasks}
+                      disabled={isExporting}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-green-200 text-green-600 rounded-lg hover:bg-green-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      <Trash2 size={13} /> Delete
+                      <Download size={13} />
+                      {isExporting ? 'Exporting...' : 'Export Tasks'}
                     </button>
+                    <button
+                      onClick={() => navigate({ to: '/projects/$projectId/edit', params: { projectId } })}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      <Pencil size={13} /> Edit
+                    </button>
+                    {confirmDelete ? (
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => setConfirmDelete(false)}
+                          className="px-2.5 py-1.5 text-xs border border-gray-200 text-gray-500 rounded-lg hover:bg-gray-50 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={handleDelete}
+                          disabled={isDeleting}
+                          className="px-2.5 py-1.5 text-xs font-medium bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors disabled:opacity-60"
+                        >
+                          {isDeleting ? 'Deleting...' : 'Confirm'}
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmDelete(true)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-red-200 text-red-500 rounded-lg hover:bg-red-50 transition-colors"
+                      >
+                        <Trash2 size={13} /> Delete
+                      </button>
+                    )}
+                  </div>
+                  {exportError && (
+                    <p className="text-xs text-red-500">{exportError}</p>
                   )}
                 </div>
               )}

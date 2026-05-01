@@ -157,7 +157,7 @@ export default function UserTable({
         return (
           <div className="flex items-center justify-center gap-2">
             <button
-              onClick={() => navigate({ to: '/users/$userId', params: { userId: user.id } })}
+              onClick={() => navigate({ to: '/users/$userId', params: { userId: user.id }, search: {} as any })}
               className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-100 text-gray-500 transition-colors cursor-pointer"
               title="View details"
             >

@@ -1,7 +1,7 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { authStore } from '../../../store/auth.store'
-import { Plus, Search, ChevronDown } from 'lucide-react'
+import { Plus, Search, ChevronDown, Download } from 'lucide-react'
 import { type SortingState } from '@tanstack/react-table'
 import { useUsers } from '../../../queries/users.queries'
 import { useOrgContext } from '../../../store/orgContext.store'
@@ -11,6 +11,8 @@ import UserTable from '../../../components/users/UserTable'
 import Pagination from '../../../components/ui/Pagination'
 import { TableSkeleton } from '../../../components/ui/Skeleton'
 import ErrorMessage from '../../../components/common/ErrorMessage'
+import { exportOrgMembersApi } from '../../../http/services/export.service'
+import { downloadCsv } from '../../../lib/exportCsv'
 import type { ApiError } from '../../../types/api.types'
 import type { UserStatus } from '../../../types/user.types'
 
@@ -37,6 +39,7 @@ function UsersPage() {
   const { selectedOrg } = useOrgContext()
   const navigate = Route.useNavigate()
   const { search = '', filter = '' as UserFilter, sortBy = '', sortDir = 'asc', page = 1, limit = 10 } = Route.useSearch()
+  const [isExporting, setIsExporting] = useState(false)
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const setParams = (params: Record<string, any>) =>
@@ -80,11 +83,33 @@ function UsersPage() {
     setParams({ sortBy: next[0]?.id || undefined, sortDir: next[0]?.desc ? 'desc' : undefined, page: undefined })
   }
 
+  const exportOrgId = isSuperAdmin && selectedOrg ? selectedOrg.id : me?.orgId ?? null
+
+  const handleExportMembers = async () => {
+    if (!exportOrgId || isExporting) return
+    setIsExporting(true)
+    try {
+      const data = await exportOrgMembersApi(exportOrgId)
+      const rows: unknown[][] = [
+        ['Org Name', data.orgName],
+        ['Total Members', data.totalMembers],
+        [],
+        ['Name', 'Email', 'Role', 'Joined At'],
+        ...data.members.map((m) => [m.name, m.email, m.role, m.joinedAt]),
+      ]
+      downloadCsv(rows, `org-members-${data.orgName.toLowerCase().replace(/\s+/g, '-')}.csv`)
+    } catch (err) {
+      console.error('[Export] Failed to export org members:', err)
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
   return (
-    <div className="flex flex-col flex-1 overflow-hidden">
+    <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
 
       {/* Table card */}
-      <div className="flex flex-col flex-1 overflow-hidden bg-white rounded-xl border border-gray-100">
+      <div className="flex flex-col flex-1 min-h-0 overflow-hidden bg-white rounded-xl border border-gray-100">
 
         {/* Header */}
         <div className="flex-shrink-0 flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
@@ -120,6 +145,18 @@ function UsersPage() {
               <Search size={13} className={isFetching ? 'text-orange-400 animate-pulse' : 'text-gray-400'} />
             </div>
 
+            {exportOrgId && (
+              <button
+                onClick={handleExportMembers}
+                disabled={isExporting}
+                className="flex items-center gap-1.5 border border-gray-200 text-gray-600 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-gray-50 transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                title="Export org members as CSV"
+              >
+                <Download size={13} />
+                {isExporting ? 'Exporting...' : 'Export'}
+              </button>
+            )}
+
             {isAdmin && (
               <button
                 onClick={() => navigate({ to: '/users/new' })}
@@ -133,7 +170,7 @@ function UsersPage() {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto">
           {isLoading ? (
             <div className="p-5">
               <TableSkeleton rows={10} cols={8} />

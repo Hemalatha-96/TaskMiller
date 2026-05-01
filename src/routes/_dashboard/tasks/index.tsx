@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import {
   Plus, Search, ChevronDown,
@@ -17,6 +17,7 @@ import DateRangePicker from '../../../components/ui/DateRangePicker'
 import ConfirmDeleteModal from '../../../components/common/ConfirmDeleteModal'
 import { StatsSkeleton, TableSkeleton } from '../../../components/ui/Skeleton'
 import ErrorMessage from '../../../components/common/ErrorMessage'
+import Kbd from '../../../components/ui/Kbd'
 import type { Task, TaskStatusFilter } from '../../../types/task.types'
 import type { ApiError } from '../../../types/api.types'
 
@@ -45,6 +46,19 @@ function TasksPage() {
   const navigate = Route.useNavigate()
   const { search = '', status = '', projectId = '', dueDateFrom, dueDateTo, sortBy = '', sortDir = 'asc', page = 1, limit = 10 } = Route.useSearch()
   const [deleteTask, setDeleteTask] = useState<Task | null>(null)
+  const [searchFocused, setSearchFocused] = useState(false)
+  const searchRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== '/') return
+      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return
+      e.preventDefault()
+      searchRef.current?.focus()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const setParams = (params: Record<string, any>) =>
@@ -116,7 +130,7 @@ function TasksPage() {
   }
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden">
+    <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
 
       {/* Stats */}
       <div className="flex-shrink-0 mb-5">
@@ -140,14 +154,18 @@ function TasksPage() {
           </h2>
           <div className="flex items-center gap-2 flex-wrap">
 
-            <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-1.5 bg-gray-50">
+            <div className={`flex items-center gap-2 border rounded-lg px-3 py-1.5 transition-all duration-200 ${searchFocused ? 'border-orange-300 bg-white shadow-md shadow-orange-50' : 'border-gray-200 bg-gray-50'}`}>
               <Search size={14} className={isFetching ? 'text-orange-400 animate-pulse' : 'text-gray-400'} />
               <input
+                ref={searchRef}
                 value={search}
                 onChange={(e) => handleSearch(e.target.value)}
+                onFocus={() => setSearchFocused(true)}
+                onBlur={() => setSearchFocused(false)}
                 placeholder="Search by task"
                 className="bg-transparent outline-none w-32 text-gray-700 placeholder-gray-400 text-xs"
               />
+              {!searchFocused && !search && <Kbd>/</Kbd>}
             </div>
 
             <div className="relative">
@@ -196,7 +214,7 @@ function TasksPage() {
         </div>
 
         {/* Table */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto">
           {isLoading ? (
             <div className="p-5">
               <TableSkeleton rows={8} cols={7} />

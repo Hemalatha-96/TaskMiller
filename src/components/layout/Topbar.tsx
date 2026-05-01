@@ -1,6 +1,7 @@
 import { useRouterState, useNavigate, useMatches } from '@tanstack/react-router'
-import { ChevronDown, Plus, LogOut, Building2, Mail, ShieldCheck, Phone, Clock, UserCog, Menu } from 'lucide-react'
-import React, { useState } from 'react'
+import { ChevronDown, Plus, LogOut, Building2, Mail, ShieldCheck, Phone, Clock, UserCog, Menu, Check, LayoutDashboard, Crown, Search, X } from 'lucide-react'
+import React, { useState, useRef, useEffect } from 'react'
+import Kbd from '../ui/Kbd'
 import { useAuth } from '../../hooks/useAuth'
 import { useLogoutMutation } from '../../queries/auth.queries'
 import { useMe } from '../../queries/users.queries'
@@ -9,6 +10,7 @@ import { useProject } from '../../queries/projects.queries'
 import S3Image from '../ui/S3Image'
 import { formatDate, roleBadgeClasses, userColor } from '../../lib/utils'
 import NotificationPanel from '../notifications/NotificationPanel'
+import { useViewMode, setViewMode } from '../../store/viewMode.store'
 
 const pageConfig: Record<string, { title: string; action?: string; actionTo?: string }> = {
   '/dashboard':    { title: 'Dashboard',     action: 'Add Task',    actionTo: '/tasks/new'         },
@@ -24,7 +26,8 @@ const pageConfig: Record<string, { title: string; action?: string; actionTo?: st
 export default function Topbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const navigate = useNavigate()
-  const { isAdmin, orgName } = useAuth()
+  const { isAdmin, isSuperAdmin, orgName } = useAuth()
+  const viewMode = useViewMode()
   const { mutate: logout, isPending: isLoggingOut } = useLogoutMutation()
   const { data: profile } = useMe()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -42,7 +45,8 @@ export default function Topbar({ onToggleSidebar }: { onToggleSidebar: () => voi
 
   const config     = matchedKey ? pageConfig[matchedKey] : { title: 'Task Miller' }
   const isIndexPage = pathname === matchedKey
-  const showAction  = isAdmin && config.action && isIndexPage
+  const isSuperAdminView = isSuperAdmin && viewMode === 'superadmin'
+  const showAction  = isAdmin && !isSuperAdminView && config.action && isIndexPage
 
   let displayTitle: React.ReactNode = config.title
   if (taskId && task) {
@@ -70,11 +74,57 @@ export default function Topbar({ onToggleSidebar }: { onToggleSidebar: () => voi
   const displayName = profile?.name  ?? '...'
   const displayRole = profile?.role  ?? null
 
+  const [globalSearch, setGlobalSearch]     = useState('')
+  const [searchFocused, setSearchFocused]   = useState(false)
+  const globalSearchRef = useRef<HTMLInputElement>(null)
+
+  const isTasksPage = pathname === '/tasks' || pathname.startsWith('/tasks/')
+  const urlSearchParam = useRouterState({ select: (s) => (s.location.search as any)?.search ?? '' }) as unknown as string
+  const topbarSearchValue = isTasksPage ? urlSearchParam : globalSearch
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault()
+        globalSearchRef.current?.focus()
+      }
+      if (e.key === 'Escape' && document.activeElement === globalSearchRef.current) {
+        globalSearchRef.current?.blur()
+        if (isTasksPage) {
+          navigate({ search: (prev: any) => ({ ...prev, search: undefined, page: undefined }) } as any)
+        } else {
+          setGlobalSearch('')
+        }
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [isTasksPage])
+
+  const handleTopbarSearchChange = (val: string) => {
+    if (isTasksPage) {
+      navigate({ search: (prev: any) => ({ ...prev, search: val || undefined, page: undefined }) } as any)
+    } else {
+      setGlobalSearch(val)
+    }
+  }
+
+  const handleGlobalSearch = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (isTasksPage) return
+    const q = globalSearch.trim()
+    if (!q) return
+    navigate({ to: '/tasks', search: { search: q } as any })
+    setGlobalSearch('')
+    globalSearchRef.current?.blur()
+  }
+
   return (
     <>
-      <header className="bg-white border-b border-gray-200 px-6 h-14 flex items-center justify-between flex-shrink-0">
+      <header className="bg-white border-b border-gray-200 px-6 h-14 flex items-center justify-between gap-4 flex-shrink-0">
 
-        <div className="flex items-center gap-4">
+        {/* Left — toggle + page title */}
+        <div className="flex items-center gap-4 flex-shrink-0">
           <button
             onClick={onToggleSidebar}
             className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors text-gray-500"
@@ -85,7 +135,42 @@ export default function Topbar({ onToggleSidebar }: { onToggleSidebar: () => voi
           <h1 className="text-lg font-semibold text-gray-800">{displayTitle}</h1>
         </div>
 
-        <div className="flex items-center gap-3">
+        {/* Right — search, org pill, action button, notifications, user menu */}
+        <div className="flex items-center gap-3 flex-shrink-0">
+
+          {/* Global task search (hidden in superadmin view) */}
+          {!isSuperAdminView && (pathname === '/dashboard' || pathname === '/tasks' || pathname.startsWith('/tasks/')) && (
+            <form onSubmit={handleGlobalSearch}>
+              <div className={`flex items-center gap-2 w-64 bg-gray-50 border rounded-full px-4 py-1.5 transition-all duration-200 ${searchFocused ? 'border-orange-300 bg-white shadow-md shadow-orange-50' : 'border-gray-200'}`}>
+                <Search size={14} className={`flex-shrink-0 transition-colors ${searchFocused ? 'text-orange-400' : 'text-gray-400'}`} />
+                <input
+                  ref={globalSearchRef}
+                  value={topbarSearchValue}
+                  onChange={(e) => handleTopbarSearchChange(e.target.value)}
+                  onFocus={() => setSearchFocused(true)}
+                  onBlur={() => setSearchFocused(false)}
+                  placeholder="Search tasks..."
+                  className="flex-1 bg-transparent outline-none text-sm text-gray-700 placeholder-gray-400 min-w-0"
+                />
+                {topbarSearchValue ? (
+                  <button
+                    type="button"
+                    onClick={() => handleTopbarSearchChange('')}
+                    className="flex-shrink-0 text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <X size={13} />
+                  </button>
+                ) : (
+                  !searchFocused && (
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <Kbd>Ctrl</Kbd>
+                      <Kbd>K</Kbd>
+                    </div>
+                  )
+                )}
+              </div>
+            </form>
+          )}
 
           {/* Action button — admin+ only */}
           {showAction && config.actionTo && (
@@ -171,6 +256,30 @@ export default function Topbar({ onToggleSidebar }: { onToggleSidebar: () => voi
                     </div>
                   )}
                 </div>
+
+
+                {/* View mode switcher — superadmin only */}
+                {isSuperAdmin && (
+                  <div className="border-b border-gray-100">
+                    <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide px-4 pt-2.5 pb-1">View Mode</p>
+                    <button
+                      onClick={() => { setViewMode('superadmin'); setMenuOpen(false); navigate({ to: '/dashboard', search: { view: 'superadmin' } as any }) }}
+                      className={`w-full flex items-center gap-2 px-4 py-2 text-sm transition-colors ${viewMode === 'superadmin' ? 'text-orange-600 bg-orange-50 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      <Crown size={14} className={viewMode === 'superadmin' ? 'text-orange-500' : 'text-gray-400'} />
+                      Super Admin View
+                      {viewMode === 'superadmin' && <Check size={12} className="ml-auto text-orange-500" />}
+                    </button>
+                    <button
+                      onClick={() => { setViewMode('admin'); setMenuOpen(false); navigate({ to: '/dashboard', search: { view: 'admin' } as any }) }}
+                      className={`w-full flex items-center gap-2 px-4 py-2 pb-2.5 text-sm transition-colors ${viewMode === 'admin' ? 'text-orange-600 bg-orange-50 font-medium' : 'text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      <LayoutDashboard size={14} className={viewMode === 'admin' ? 'text-orange-500' : 'text-gray-400'} />
+                      Admin View
+                      {viewMode === 'admin' && <Check size={12} className="ml-auto text-orange-500" />}
+                    </button>
+                  </div>
+                )}
 
                 {/* Update profile */}
                 <button

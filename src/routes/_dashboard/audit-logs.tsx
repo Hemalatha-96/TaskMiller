@@ -21,7 +21,6 @@ export const Route = createFileRoute('/_dashboard/audit-logs')({
     entityId:   (search.entityId   as string) || undefined,
     dateFrom:   (search.dateFrom   as string) || undefined,
     dateTo:     (search.dateTo     as string) || undefined,
-    viewId:     (search.viewId     as string) || undefined,
     page:       Number(search.page)  > 1  ? Number(search.page)  : undefined,
     limit:      Number(search.limit) > 0 && Number(search.limit) !== 20 ? Number(search.limit) : undefined,
   }),
@@ -35,7 +34,7 @@ function AuditLogsPage() {
   const orgId = isSuperAdmin && selectedOrg ? selectedOrg.id : undefined
 
   const navigate = Route.useNavigate()
-  const { entityType = '', entityId = '', dateFrom, dateTo, viewId, page = 1, limit = 20 } = Route.useSearch()
+  const { entityType = '', entityId = '', dateFrom, dateTo, page = 1, limit = 20 } = Route.useSearch()
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const setParams = (params: Record<string, any>) =>
@@ -64,10 +63,10 @@ function AuditLogsPage() {
   if (!isAdmin) return null
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden">
+    <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
 
       {/* Table card */}
-      <div className="flex flex-col flex-1 overflow-hidden bg-white rounded-xl border border-gray-100">
+      <div className="flex flex-col flex-1 min-h-0 overflow-hidden bg-white rounded-xl border border-gray-100">
 
         {/* Header */}
         <div className="flex-shrink-0 flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
@@ -116,7 +115,7 @@ function AuditLogsPage() {
         </div>
 
         {/* Table */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto">
           {isLoading ? (
             <div className="p-5">
               <TableSkeleton rows={12} cols={6} />
@@ -126,13 +125,7 @@ function AuditLogsPage() {
               <ErrorMessage message={(error as ApiError)?.message ?? 'Failed to load audit logs'} />
             </div>
           ) : (
-            <AuditLogTable
-              logs={logs}
-              startEntry={startEntry}
-              viewLogId={viewId ?? null}
-              onView={(id) => setParams({ viewId: id })}
-              onCloseView={() => setParams({ viewId: undefined })}
-            />
+            <AuditLogTable logs={logs} startEntry={startEntry} />
           )}
         </div>
 

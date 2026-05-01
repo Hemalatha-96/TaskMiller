@@ -6,6 +6,7 @@ import { useAuth } from '../../hooks/useAuth'
 import { useLogoutMutation } from '../../queries/auth.queries'
 import { useOrgs } from '../../queries/orgs.queries'
 import { setSelectedOrg, useOrgContext } from '../../store/orgContext.store'
+import { useViewMode } from '../../store/viewMode.store'
 import type { Organization } from '../../types/org.types'
 
 const navItems = [
@@ -26,6 +27,7 @@ export default function Sidebar({ isCollapsed }: SidebarProps) {
   const pathname          = useRouterState({ select: (s) => s.location.pathname })
   const navigate          = useNavigate()
   const { role, orgName } = useAuth()
+  const viewMode = useViewMode()
   const { mutate: logout, isPending: isLoggingOut } = useLogoutMutation()
   const { selectedOrg } = useOrgContext()
   const queryClient = useQueryClient()
@@ -42,9 +44,15 @@ export default function Sidebar({ isCollapsed }: SidebarProps) {
     }
   }, [orgs, role, selectedOrg])
 
-  const visibleNav = navItems.filter((item) =>
-    role !== null && (item.roles as readonly string[]).includes(role)
-  )
+  const isSuperAdminView = role === 'superadmin' && viewMode === 'superadmin'
+
+  const visibleNav = navItems.filter((item) => {
+    if (!role) return false
+    if (isSuperAdminView) return item.to === '/dashboard' || item.to === '/organizations'
+    // In admin view mode, superadmin sees the same nav as a regular admin (no Organizations)
+    const effectiveRole = role === 'superadmin' ? 'admin' : role
+    return (item.roles as readonly string[]).includes(effectiveRole)
+  })
 
   const activeOrgId   = selectedOrg?.id ?? orgs?.[0]?.id
   const activeOrgName = selectedOrg?.name ?? orgs?.[0]?.name ?? orgName ?? ''
@@ -116,8 +124,25 @@ export default function Sidebar({ isCollapsed }: SidebarProps) {
         {/* Org section */}
         <div className="relative">
 
-          {/* Superadmin: switchable */}
-          {role === 'superadmin' && (
+          {/* Superadmin: org switcher — always in admin view, only on dashboard in superadmin view */}
+          {/* Admin / Developer: read-only org display */}
+          {(role === 'admin' || role === 'developer') && orgName && (
+            <div
+              className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'gap-2'} bg-white border border-orange-100 rounded-xl p-2 shadow-sm`}
+              title={isCollapsed ? orgName : ''}
+            >
+              <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center flex-shrink-0">
+                <Building2 size={16} className="text-orange-600" />
+              </div>
+              {!isCollapsed && (
+                <span className="flex-1 text-left text-xs font-bold text-gray-700 truncate">
+                  {orgName}
+                </span>
+              )}
+            </div>
+          )}
+
+          {role === 'superadmin' && !isSuperAdminView && (
             <div className="w-full relative">
 
               {/* Floating popup above the button */}
@@ -171,15 +196,7 @@ export default function Sidebar({ isCollapsed }: SidebarProps) {
             </div>
           )}
 
-          {/* Admin / Developer: static only */}
-          {role !== 'superadmin' && orgName && (
-            <div className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'gap-2'} bg-white border border-orange-100 rounded-xl p-2 shadow-sm`}>
-              <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center flex-shrink-0">
-                <Building2 size={16} className="text-orange-600" />
-              </div>
-              {!isCollapsed && <span className="flex-1 text-xs font-bold text-gray-700 truncate">{orgName}</span>}
-            </div>
-          )}
+
 
         </div>
 
