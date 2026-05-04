@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { Upload, Loader2, Trash2, Download, Eye, MoreVertical } from 'lucide-react'
+import { Upload, Loader2, Trash2, Download, Eye, MoreVertical, Search } from 'lucide-react'
 import {
   useAttachments,
   useAddAttachmentMutation,
@@ -8,7 +8,7 @@ import {
 import { useUploadFile } from '../../queries/uploads.queries'
 import { getAttachmentDownloadUrlApi } from '../../http/services/attachments.service'
 import { useAuth } from '../../hooks/useAuth'
-import Pagination from '../ui/Pagination'
+import { useSearch, useNavigate } from '@tanstack/react-router'
 import type { Attachment } from '../../types/task.types'
 
 interface AttachmentsSectionProps {
@@ -184,11 +184,16 @@ export default function AttachmentsSection({ taskId }: AttachmentsSectionProps) 
   const { user, isAdmin } = useAuth()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
-  const [page, setPage] = useState(1)
-  const [limit, setLimit] = useState(6)
+  
+  const navigate = useNavigate()
+  const searchParams = useSearch({ strict: false }) as Record<string, unknown>
+  const search = (searchParams.attachmentSearch as string) || ''
+  const setSearch = (val: string) => (navigate as any)({ search: { ...searchParams, attachmentSearch: val || undefined }, replace: true })
 
   const { data, isLoading } = useAttachments(taskId)
   const attachments = data?.attachments ?? []
+  
+  const filteredAttachments = attachments.filter(a => a.fileName.toLowerCase().includes(search.toLowerCase()))
 
   const { mutateAsync: uploadFile, isPending: isUploadingToS3 } = useUploadFile()
   const { mutate: addAttachment, isPending: isAddingToDb } = useAddAttachmentMutation(taskId)
@@ -221,21 +226,32 @@ export default function AttachmentsSection({ taskId }: AttachmentsSectionProps) 
   }
 
   return (
-    <div className="mt-6 flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden">
       {/* Sticky Header */}
-      <div className="sticky top-0 z-20 bg-white flex items-center justify-between mb-4 pb-2 border-b border-gray-50">
+      <div className="flex-shrink-0 sticky top-0 z-20 bg-white flex items-center justify-between px-6 py-4 border-b border-gray-100 gap-4">
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-semibold text-gray-700">Attachments</h3>
           <span className="bg-gray-100 text-gray-500 text-xs px-2 py-0.5 rounded-full font-medium">
-            {attachments.length}
+            {filteredAttachments.length}
           </span>
         </div>
+        
+        <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-1.5 bg-gray-50 flex-1 max-w-sm">
+          <Search size={14} className="text-gray-400" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search attachments..."
+            className="bg-transparent outline-none w-full text-gray-700 placeholder-gray-400 text-xs"
+          />
+        </div>
+
         <button
           onClick={() => fileInputRef.current?.click()}
           disabled={isUploading}
-          className="flex items-center gap-1.5 text-sm font-semibold bg-gray-900 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+          className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold bg-gray-900 hover:bg-gray-700 text-white px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
         >
-          {isUploading ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
+          {isUploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
           {isUploading ? 'Uploading...' : 'Upload'}
         </button>
         <input
@@ -246,57 +262,35 @@ export default function AttachmentsSection({ taskId }: AttachmentsSectionProps) 
         />
       </div>
 
-      <div className="flex-1 overflow-y-auto min-h-0">
+      <div className="flex-1 overflow-y-auto px-6 py-4 min-h-0">
         {uploadError && (
           <div className="mb-3 bg-red-50 border border-red-200 text-red-600 text-xs px-3 py-2 rounded-lg font-medium">
             {uploadError}
           </div>
         )}
 
-        {/* Grid */}
         {isLoading ? (
           <div className="flex items-center justify-center h-32">
             <Loader2 className="w-6 h-6 text-orange-500 animate-spin" />
           </div>
-        ) : attachments.length === 0 ? (
+        ) : filteredAttachments.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-32 text-gray-400 border border-dashed border-gray-200 rounded-xl">
             <Upload size={22} className="mb-2 opacity-40" />
-            <p className="text-sm">No attachments yet</p>
+            <p className="text-sm">No attachments found</p>
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3 mb-6">
-            {(() => {
-              const start = (page - 1) * limit
-              const paged = attachments.slice(start, start + limit)
-              return paged.map((attachment) => (
-                <AttachmentCard
-                  key={attachment.id}
-                  attachment={attachment}
-                  taskId={taskId}
-                  canDelete={isAdmin || user?.id === attachment.uploader.id}
-                />
-              ))
-            })()}
+            {filteredAttachments.map((attachment) => (
+              <AttachmentCard
+                key={attachment.id}
+                attachment={attachment}
+                taskId={taskId}
+                canDelete={isAdmin || user?.id === attachment.uploader.id}
+              />
+            ))}
           </div>
         )}
       </div>
-
-      {/* Pagination Footer */}
-      {!isLoading && attachments.length > 0 && (
-        <Pagination
-          page={page}
-          totalPages={Math.ceil(attachments.length / limit)}
-          totalRecords={attachments.length}
-          startEntry={(page - 1) * limit + 1}
-          endEntry={Math.min(page * limit, attachments.length)}
-          limit={limit}
-          hasPrevPage={page > 1}
-          hasNextPage={page < Math.ceil(attachments.length / limit)}
-          onPageChange={setPage}
-          onLimitChange={(l) => { setLimit(l); setPage(1) }}
-          className="flex-shrink-0 flex items-center justify-between py-3 bg-white border-t border-gray-100"
-        />
-      )}
     </div>
   )
 }

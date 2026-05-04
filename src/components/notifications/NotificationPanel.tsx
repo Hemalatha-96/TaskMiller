@@ -27,7 +27,7 @@ export default function NotificationPanel() {
     <div className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="relative flex items-center gap-1 bg-pink-500 text-white px-3 py-1.5 rounded-full text-sm font-medium hover:bg-pink-600 transition-colors"
+        className="relative flex items-center gap-1 bg-pink-500 text-white px-3 py-1.5 rounded-full text-sm font-medium hover:bg-pink-600 transition-colors cursor-pointer"
       >
         <Bell size={14} />
         {unreadCount > 0 && (
@@ -50,7 +50,7 @@ export default function NotificationPanel() {
                 <button
                   onClick={() => markAll()}
                   disabled={isMarkingAll}
-                  className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 font-medium disabled:opacity-50"
+                  className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 font-medium disabled:opacity-50 cursor-pointer"
                 >
                   <CheckCheck size={13} />
                   Mark all read
@@ -58,7 +58,7 @@ export default function NotificationPanel() {
               )}
               <button
                 onClick={() => setOpen(false)}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
+                className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
               >
                 <X size={15} />
               </button>
@@ -76,7 +76,7 @@ export default function NotificationPanel() {
                 <button
                   key={n.id}
                   onClick={() => handleItemClick(n)}
-                  className={`w-full text-left px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors flex items-start gap-3 last:border-b-0 ${
+                  className={`w-full text-left px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors flex items-start gap-3 last:border-b-0 cursor-pointer ${
                     !n.readAt ? 'bg-indigo-50/40' : ''
                   }`}
                 >

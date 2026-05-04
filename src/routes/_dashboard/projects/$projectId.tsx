@@ -1,21 +1,26 @@
 import { useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import {
-  ArrowLeft, Pencil, Trash2,
-  ListTodo, Timer, AlertCircle, CheckCircle2, LayoutList, PauseCircle, Download,
+  ArrowLeft, Pencil, Trash2, ChevronDown, Download, Upload,
+  ListTodo, Timer, AlertCircle, CheckCircle2, LayoutList, PauseCircle,
 } from 'lucide-react'
-import { useProject, useDeleteProjectMutation } from '../../../queries/projects.queries'
+import { useProject, useDeleteProjectMutation, useUpdateProjectMutation } from '../../../queries/projects.queries'
 import { useAuth } from '../../../hooks/useAuth'
-import { exportProjectTasksApi } from '../../../http/services/export.service'
-import { downloadProjectCsv } from '../../../lib/exportCsv'
 import { ProjectDetailSkeleton } from '../../../components/ui/Skeleton'
 import ErrorMessage from '../../../components/common/ErrorMessage'
 import S3Image from '../../../components/ui/S3Image'
 import Pagination from '../../../components/ui/Pagination'
-import { userColor, formatDate, projectStatusBadge } from '../../../lib/utils'
+import { MoreMenu } from '../../../components/common/MoreMenu'
+import { useExportProjectDetailsMutation } from '../../../queries/import-export.queries'
+import ImportTasksModal from '../../../components/projects/ImportTasksModal'
+import { userColor, formatDate , getInitials} from '../../../lib/utils'
+import type { ProjectStatus } from '../../../types/project.types'
 import type { ApiError } from '../../../types/api.types'
 
 export const Route = createFileRoute('/_dashboard/projects/$projectId')({
+  validateSearch: (search: Record<string, unknown>) => ({
+    view: (search.view as string) === 'list' ? ('list' as const) : undefined,
+  }),
   component: ProjectViewPage,
 })
 
@@ -26,46 +31,41 @@ const cardColors = [
 ]
 
 
-const statusLabel: Record<string, string> = {
+const statusSelectStyle: Record<string, string> = {
+  active:    'bg-green-50  text-green-600  border-green-200',
+  on_hold:   'bg-amber-50  text-amber-600  border-amber-200',
+  completed: 'bg-blue-50   text-blue-600   border-blue-200',
+}
+
+const statusLabels: Record<string, string> = {
   active:    'Active',
   on_hold:   'On Hold',
   completed: 'Completed',
 }
 
+const allStatuses: ProjectStatus[] = ['active', 'on_hold', 'completed']
+
 function ProjectViewPage() {
   const { projectId } = Route.useParams()
+  const { view }      = Route.useSearch()
   const navigate      = useNavigate()
   const { isAdmin }   = useAuth()
+  const backSearch    = { view: view ?? undefined } as any
 
   const { data: project, isLoading, error } = useProject(projectId)
   const { mutate: deleteProject, isPending: isDeleting } = useDeleteProjectMutation()
+  const { mutate: updateProject, isPending: isUpdatingStatus } = useUpdateProjectMutation()
+  const { mutate: exportProjectDetails, isPending: isExporting } = useExportProjectDetailsMutation()
 
 
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [showImportTasks, setShowImportTasks] = useState(false)
   const [membersPage,  setMembersPage]  = useState(1)
   const [membersLimit, setMembersLimit] = useState(10)
-  const [isExporting,  setIsExporting]  = useState(false)
-  const [exportError,  setExportError]  = useState<string | null>(null)
-
-  const handleExportTasks = async () => {
-    if (isExporting) return
-    setIsExporting(true)
-    setExportError(null)
-    try {
-      const data = await exportProjectTasksApi(projectId)
-      downloadProjectCsv(data)
-    } catch (err) {
-      const msg = (err as ApiError)?.message ?? 'Export failed. Please try again.'
-      setExportError(msg)
-      console.error('[Export] Failed to export tasks:', err)
-    } finally {
-      setIsExporting(false)
-    }
-  }
 
   const handleDelete = () => {
     deleteProject(projectId, {
-      onSuccess: () => navigate({ to: '/projects', search: {} as any }),
+      onSuccess: () => navigate({ to: '/projects', search: backSearch }),
     })
   }
 
@@ -74,7 +74,7 @@ function ProjectViewPage() {
   if (error || !project) {
     return (
       <div className="space-y-4">
-        <button onClick={() => navigate({ to: '/projects', search: {} as any })} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700">
+        <button onClick={() => navigate({ to: '/projects', search: backSearch })} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 cursor-pointer">
           <ArrowLeft size={15} /> Back to Projects
         </button>
         <ErrorMessage message={(error as ApiError)?.message ?? 'Project not found'} />
@@ -102,20 +102,20 @@ function ProjectViewPage() {
   const pagedMembers    = project.members.slice((membersPage - 1) * membersLimit, membersPage * membersLimit)
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 gap-4 overflow-y-auto pb-6">
+    <div className="flex flex-col flex-1 gap-4 overflow-hidden">
 
       {/* Back */}
       <button
-        onClick={() => navigate({ to: '/projects', search: {} as any })}
-        className="flex-shrink-0 flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+        onClick={() => navigate({ to: '/projects', search: backSearch })}
+        className="flex-shrink-0 flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors cursor-pointer"
       >
         <ArrowLeft size={15} /> Back to Projects
       </button>
 
-      <div className="flex flex-col lg:flex-row gap-5 items-start">
+      <div className="flex flex-1 gap-5 min-h-0">
 
         {/* ── Left panel ────────────────────────────────────────────────── */}
-        <div className="flex flex-col flex-1 min-w-0 gap-4 w-full">
+        <div className="flex flex-col flex-1 min-h-0 gap-4 overflow-hidden">
 
           {/* Header card */}
           <div className="bg-white rounded-xl border border-gray-100 p-5">
@@ -134,11 +134,6 @@ function ProjectViewPage() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2.5 flex-wrap">
                   <h2 className="text-lg font-bold text-gray-800 leading-tight">{project.title}</h2>
-                  {project.status && (
-                    <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium capitalize ${projectStatusBadge[project.status] ?? 'bg-gray-50 text-gray-500'}`}>
-                      {statusLabel[project.status] ?? project.status}
-                    </span>
-                  )}
                 </div>
                 <p className="text-sm text-gray-500 mt-2 leading-relaxed">
                   {project.description ?? <span className="text-gray-300 italic">No description provided</span>}
@@ -146,20 +141,49 @@ function ProjectViewPage() {
               </div>
 
               {/* Actions */}
-              {isAdmin && (
-                <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={handleExportTasks}
-                      disabled={isExporting}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-green-200 text-green-600 rounded-lg hover:bg-green-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              <div className="flex items-center gap-2 flex-shrink-0">
+
+                {/* Status dropdown */}
+                {isAdmin ? (
+                  <div className="relative inline-flex items-center">
+                    <select
+                      value={project.status}
+                      disabled={isUpdatingStatus}
+                      onChange={(e) => updateProject({ id: projectId, body: { status: e.target.value as ProjectStatus } })}
+                      className={`appearance-none pl-3 pr-7 py-1.5 rounded-lg text-xs font-semibold border cursor-pointer outline-none transition-colors disabled:opacity-60 ${statusSelectStyle[project.status] ?? 'bg-gray-50 text-gray-600 border-gray-200'}`}
                     >
-                      <Download size={13} />
-                      {isExporting ? 'Exporting...' : 'Export Tasks'}
-                    </button>
+                      {allStatuses.map((s) => (
+                        <option key={s} value={s}>{statusLabels[s]}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={11} className={`absolute right-2 pointer-events-none ${statusSelectStyle[project.status]?.split(' ')[1] ?? 'text-gray-500'}`} />
+                  </div>
+                ) : (
+                  <span className={`text-xs px-2.5 py-1 rounded-lg font-semibold border ${statusSelectStyle[project.status] ?? 'bg-gray-50 text-gray-600 border-gray-200'}`}>
+                    {statusLabels[project.status] ?? project.status}
+                  </span>
+                )}
+
+                {isAdmin && (
+                  <>
+                    <MoreMenu>
+                      <button
+                        onClick={() => exportProjectDetails(projectId)}
+                        disabled={isExporting}
+                        className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors w-full text-left disabled:opacity-50"
+                      >
+                        <Download size={14} /> {isExporting ? 'Exporting...' : 'Export Project Details'}
+                      </button>
+                      <button
+                        onClick={() => setShowImportTasks(true)}
+                        className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors w-full text-left"
+                      >
+                        <Upload size={14} className="text-gray-400" /> Import Tasks
+                      </button>
+                    </MoreMenu>
                     <button
                       onClick={() => navigate({ to: '/projects/$projectId/edit', params: { projectId } })}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
                     >
                       <Pencil size={13} /> Edit
                     </button>
@@ -167,14 +191,14 @@ function ProjectViewPage() {
                       <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => setConfirmDelete(false)}
-                          className="px-2.5 py-1.5 text-xs border border-gray-200 text-gray-500 rounded-lg hover:bg-gray-50 transition-colors"
+                          className="px-2.5 py-1.5 text-xs border border-gray-200 text-gray-500 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
                         >
                           Cancel
                         </button>
                         <button
                           onClick={handleDelete}
                           disabled={isDeleting}
-                          className="px-2.5 py-1.5 text-xs font-medium bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors disabled:opacity-60"
+                          className="px-2.5 py-1.5 text-xs font-medium bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors disabled:opacity-60 cursor-pointer"
                         >
                           {isDeleting ? 'Deleting...' : 'Confirm'}
                         </button>
@@ -182,17 +206,14 @@ function ProjectViewPage() {
                     ) : (
                       <button
                         onClick={() => setConfirmDelete(true)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-red-200 text-red-500 rounded-lg hover:bg-red-50 transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-red-200 text-red-500 rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
                       >
                         <Trash2 size={13} /> Delete
                       </button>
                     )}
-                  </div>
-                  {exportError && (
-                    <p className="text-xs text-red-500">{exportError}</p>
-                  )}
-                </div>
-              )}
+                  </>
+                )}
+              </div>
             </div>
 
             {/* Created By / Created At / Updated At */}
@@ -202,9 +223,9 @@ function ProjectViewPage() {
                 <div className="flex items-center gap-2">
                   <div className={`w-6 h-6 ${userColor(project.creator.id)} rounded-full flex items-center justify-center flex-shrink-0 relative overflow-hidden`}>
                     {project.creator.avatarUrl ? (
-                      <S3Image storageKey={project.creator.avatarUrl} fallbackInitials={project.creator.name.charAt(0).toUpperCase()} className="w-full h-full object-cover" />
+                      <S3Image storageKey={project.creator.avatarUrl} fallbackInitials={getInitials(project.creator.name)} className="w-full h-full object-cover" />
                     ) : (
-                      <span className="text-white text-xs font-semibold">{project.creator.name.charAt(0).toUpperCase()}</span>
+                      <span className="text-white text-xs font-semibold">{getInitials(project.creator.name)}</span>
                     )}
                   </div>
                   <p className="text-sm font-medium text-gray-700 truncate">{project.creator.name}</p>
@@ -238,7 +259,7 @@ function ProjectViewPage() {
               </div>
 
               {/* Scrollable table */}
-              <div className="flex-1 overflow-auto">
+              <div className="flex-1 overflow-y-auto">
                 {totalMembers === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 text-gray-400">
                     <p className="text-sm">No members assigned</p>
@@ -249,7 +270,6 @@ function ProjectViewPage() {
                       <tr className="text-xs text-gray-600 font-semibold">
                         <th className="px-5 py-3 text-left bg-[#ccfbf1]">#</th>
                         <th className="px-5 py-3 text-left bg-[#ccfbf1]">Name</th>
-                        <th className="px-5 py-3 text-left bg-[#ccfbf1]">Date</th>
                         <th className="px-5 py-3 text-left bg-[#ccfbf1]">Tasks Assigned</th>
                         <th className="px-5 py-3 text-left bg-[#ccfbf1]">Email</th>
                       </tr>
@@ -264,16 +284,13 @@ function ProjectViewPage() {
                             <div className="flex items-center gap-2.5">
                               <div className={`w-8 h-8 rounded-full ${userColor(m.id)} flex items-center justify-center flex-shrink-0 relative overflow-hidden`}>
                                 {m.avatarUrl ? (
-                                  <S3Image storageKey={m.avatarUrl} fallbackInitials={m.name.charAt(0).toUpperCase()} className="w-full h-full object-cover" />
+                                  <S3Image storageKey={m.avatarUrl} fallbackInitials={getInitials(m.name)} className="w-full h-full object-cover" />
                                 ) : (
-                                  <span className="text-white text-xs font-semibold">{m.name.charAt(0).toUpperCase()}</span>
+                                  <span className="text-white text-xs font-semibold">{getInitials(m.name)}</span>
                                 )}
                               </div>
                               <span className="font-medium text-gray-700 whitespace-nowrap">{m.name}</span>
                             </div>
-                          </td>
-                          <td className="px-5 py-3 text-gray-500 text-xs whitespace-nowrap">
-                            {formatDate(project.createdAt)}
                           </td>
                           <td className="px-5 py-3">
                             <span className="inline-flex items-center justify-center min-w-[28px] px-2 py-0.5 rounded-full bg-orange-50 text-orange-600 text-xs font-semibold">
@@ -310,8 +327,8 @@ function ProjectViewPage() {
 
         </div>{/* end left panel */}
 
-        {/* ── Right panel — unified stats card ──────────────────────────── */}
-        <div className="w-full lg:w-64 flex-shrink-0">
+        {/* ── Right panel — stats card ───────────────────────────────────── */}
+        <div className="w-64 flex-shrink-0 overflow-y-auto">
           <div className="bg-white rounded-xl border border-gray-100 p-5">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Statistics</p>
             <div className="space-y-3">
@@ -331,6 +348,19 @@ function ProjectViewPage() {
         </div>
 
       </div>
+
+      {/* Import Tasks Modal */}
+      {showImportTasks && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-3xl">
+            <ImportTasksModal
+              projectId={projectId}
+              projectTitle={project.title}
+              onClose={() => setShowImportTasks(false)}
+            />
+          </div>
+        </div>
+      )}
 
     </div>
   )

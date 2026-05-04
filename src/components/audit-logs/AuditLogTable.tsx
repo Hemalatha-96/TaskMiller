@@ -1,227 +1,334 @@
-import { Fragment, useState } from 'react'
-import { ChevronRight, ChevronDown, ArrowRight } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { X, Eye } from 'lucide-react'
+import { formatDateTime, formatDate } from '../../lib/utils'
+import Tooltip from '../ui/Tooltip'
 import type { AuditLog } from '../../types/audit-log.types'
 
-const actionStyle = (action: string): { label: string; cls: string } => {
-  const verb = action.split('.')[1] ?? action
-  const map: Record<string, string> = {
-    created: 'bg-green-100 text-green-700',
-    updated: 'bg-amber-100 text-amber-700',
-    deleted: 'bg-red-100 text-red-700',
-  }
-  return {
-    label: verb.charAt(0).toUpperCase() + verb.slice(1),
-    cls:   map[verb] ?? 'bg-gray-100 text-gray-600',
-  }
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const SKIP = new Set(['id', 'orgId', 'createdBy', 'createdAt', 'updatedAt', 'deletedAt', 'completedAt', 'parentTaskId', 'projectId'])
+
+const LABELS: Record<string, string> = {
+  title: 'Title', name: 'Name', description: 'Description', status: 'Status',
+  priority: 'Priority', dueDate: 'Due Date', logoUrl: 'Logo URL', email: 'Email',
+  role: 'Role', avatarUrl: 'Avatar URL', slug: 'Slug', members: 'Members',
+  creator: 'Creator', assignees: 'Assignees',
 }
 
-const entityStyle: Record<string, string> = {
-  task:    'bg-blue-100 text-blue-700',
-  project: 'bg-violet-100 text-violet-700',
-  user:    'bg-teal-100 text-teal-700',
+function displayLabel(key: string): string {
+  return LABELS[key] ?? key.replace(/([A-Z])/g, ' $1').replace(/^./, (s) => s.toUpperCase())
 }
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
-    year:   'numeric',
-    month:  'short',
-    day:    'numeric',
-    hour:   '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  })
-}
-
-function formatFieldName(key: string): string {
-  return key
-    .replace(/([A-Z])/g, ' $1')
-    .replace(/_/g, ' ')
-    .trim()
-    .replace(/\b\w/g, (c) => c.toUpperCase())
-}
-
-function formatFieldValue(key: string, val: unknown): string {
-  if (val === null || val === undefined || val === '') return '—'
+function displayValue(val: unknown): string {
+  if (val === null || val === undefined) return '—'
   if (Array.isArray(val)) {
-    if (val.length === 0) return '—'
-    const names = val
-      .map((item) =>
-        typeof item === 'object' && item !== null
-          ? (item as Record<string, unknown>).name ?? (item as Record<string, unknown>).email ?? null
-          : null,
-      )
-      .filter(Boolean)
-    return names.length > 0 ? (names as string[]).join(', ') : `${val.length} item${val.length > 1 ? 's' : ''}`
+    if (val.length === 0) return '(empty)'
+    const first = val[0]
+    if (typeof first === 'object' && first !== null && 'name' in first)
+      return val.map((v: any) => v.name ?? v.email ?? v.id).join(', ')
+    return String(val.length) + ' item(s)'
   }
   if (typeof val === 'object') {
     const obj = val as Record<string, unknown>
-    if (obj.name)  return String(obj.name)
-    if (obj.title) return String(obj.title)
-    if (obj.email) return String(obj.email)
-    return '—'
+    return (obj.name ?? obj.title ?? obj.email ?? obj.id ?? JSON.stringify(val)) as string
   }
-  if (key.toLowerCase().includes('date') && typeof val === 'string' && val.includes('T')) {
-    try {
-      return new Date(val).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
-    } catch { /* fall through */ }
-  }
-  if (typeof val === 'string') {
-    return val.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-  }
+  if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(val))
+    return formatDate(val)
   return String(val)
 }
 
-function parseField(raw: string | Record<string, unknown> | null): Record<string, unknown> | null {
-  if (!raw) return null
-  if (typeof raw === 'object') return raw
-  try { return JSON.parse(raw) } catch { return null }
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
+const actionStyle = (action: string): { label: string; cls: string } => {
+  const verb = action.split('.')[1] ?? action
+  const label = verb.replace(/_/g, ' ').replace(/^./, (s) => s.toUpperCase())
+  const map: Record<string, string> = {
+    created:          'bg-green-100 text-green-700',
+    updated:          'bg-amber-100 text-amber-700',
+    deleted:          'bg-red-100 text-red-700',
+    status_updated:   'bg-blue-100 text-blue-700',
+    admin_assigned:   'bg-violet-100 text-violet-700',
+    developer_added:  'bg-teal-100 text-teal-700',
+    member_removed:   'bg-rose-100 text-rose-700',
+    member_added:     'bg-cyan-100 text-cyan-700',
+  }
+  return { label, cls: map[verb] ?? 'bg-gray-100 text-gray-600' }
 }
 
-function computeDiff(
-  before: string | Record<string, unknown> | null,
-  after:  string | Record<string, unknown> | null,
-): Array<{ field: string; from: unknown; to: unknown }> {
-  const b = parseField(before)
-  const a = parseField(after)
-  if (!b && !a) return []
-  const allKeys = new Set([...Object.keys(b ?? {}), ...Object.keys(a ?? {})])
-  const diffs: Array<{ field: string; from: unknown; to: unknown }> = []
-  for (const key of allKeys) {
-    const bVal = b?.[key] ?? null
-    const aVal = a?.[key] ?? null
-    if (JSON.stringify(bVal) !== JSON.stringify(aVal)) {
-      diffs.push({ field: key, from: bVal, to: aVal })
-    }
-  }
-  return diffs
+const entityStyle: Record<string, string> = {
+  task:         'text-blue-500',
+  project:      'text-violet-500',
+  user:         'text-teal-500',
+  organization: 'text-orange-500',
 }
+
+// ─── Drawer content ───────────────────────────────────────────────────────────
+
+const PAGE = 30
+
+function DrawerChanges({ log }: { log: AuditLog }) {
+  const [visibleCount, setVisibleCount] = useState(PAGE)
+  const sentinelRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => { setVisibleCount(PAGE) }, [log])
+
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) setVisibleCount((c) => c + PAGE) },
+      { threshold: 0.1 },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [log])
+
+  const { before, after } = log
+
+  if (!before && !after) {
+    return <p className="text-sm text-gray-400 text-center py-8">No snapshot data</p>
+  }
+
+  const allKeys = Array.from(
+    new Set([...Object.keys(before ?? {}), ...Object.keys(after ?? {})])
+  ).filter((k) => !SKIP.has(k))
+
+  if (!before && after) {
+    const visible = allKeys.slice(0, visibleCount)
+    return (
+      <div>
+        <div className="px-4 py-2.5 bg-green-50 border-b border-green-100 mb-3">
+          <p className="text-xs font-semibold text-green-700 uppercase tracking-wide">Created — New State</p>
+        </div>
+        <table className="w-full text-sm">
+          <tbody>
+            {visible.map((key) => (
+              <tr key={key} className="border-b border-gray-50 last:border-0">
+                <td className="px-4 py-2 font-medium text-gray-400 w-32 align-top">{displayLabel(key)}</td>
+                <td className="px-4 py-2 text-gray-700 align-top">{displayValue(after[key])}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {allKeys.length > visibleCount && <div ref={sentinelRef} className="h-6" />}
+      </div>
+    )
+  }
+
+  if (before && !after) {
+    const visible = allKeys.slice(0, visibleCount)
+    return (
+      <div>
+        <div className="px-4 py-2.5 bg-red-50 border-b border-red-100 mb-3">
+          <p className="text-xs font-semibold text-red-700 uppercase tracking-wide">Deleted — Last Known State</p>
+        </div>
+        <table className="w-full text-sm">
+          <tbody>
+            {visible.map((key) => (
+              <tr key={key} className="border-b border-gray-50 last:border-0">
+                <td className="px-4 py-2 font-medium text-gray-400 w-32 align-top">{displayLabel(key)}</td>
+                <td className="px-4 py-2 text-gray-700 align-top">{displayValue(before[key])}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {allKeys.length > visibleCount && <div ref={sentinelRef} className="h-6" />}
+      </div>
+    )
+  }
+
+  if (before && after) {
+    const changed = allKeys.filter((k) => displayValue(before[k]) !== displayValue(after[k]))
+    if (changed.length === 0) {
+      return <p className="text-sm text-gray-400 text-center py-8">No field changes detected</p>
+    }
+    const visible = changed.slice(0, visibleCount)
+    return (
+      <div>
+        <div className="px-4 py-2.5 bg-amber-50 border-b border-amber-100 mb-3">
+          <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">
+            Changed Fields ({changed.length})
+          </p>
+        </div>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-gray-100 text-gray-400 font-medium text-xs">
+              <th className="px-4 py-2 text-left w-28">Field</th>
+              <th className="px-4 py-2 text-left">Before</th>
+              <th className="px-4 py-2 text-left">After</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visible.map((key) => (
+              <tr key={key} className="border-b border-gray-50 last:border-0">
+                <td className="px-4 py-2 font-medium text-gray-500 align-top">{displayLabel(key)}</td>
+                <td className="px-4 py-2 text-gray-500 align-top line-through">{displayValue(before[key])}</td>
+                <td className="px-4 py-2 text-gray-800 font-medium align-top">{displayValue(after[key])}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {changed.length > visibleCount && <div ref={sentinelRef} className="h-6" />}
+      </div>
+    )
+  }
+
+  return null
+}
+
+// ─── Table ────────────────────────────────────────────────────────────────────
 
 interface Props {
-  logs:       AuditLog[]
+  logs: AuditLog[]
   startEntry: number
 }
 
 export default function AuditLogTable({ logs, startEntry }: Props) {
-  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null)
 
   if (logs.length === 0) {
     return <div className="py-16 text-center text-sm text-gray-400">No audit logs found</div>
   }
 
   return (
-    <table className="w-full text-sm">
-      <thead className="sticky top-0 z-10">
-        <tr className="border-b border-gray-200 text-xs text-gray-600 font-semibold uppercase tracking-wide">
-          <th className="px-4 py-3 text-left w-10 bg-[#ccfbf1]">S.No</th>
-          <th className="px-4 py-3 text-left bg-[#ccfbf1]">Entity</th>
-          <th className="px-4 py-3 text-left bg-[#ccfbf1]">Action</th>
-          <th className="px-4 py-3 text-left bg-[#ccfbf1]">Description</th>
-          <th className="px-4 py-3 text-left bg-[#ccfbf1]">Actor</th>
-          <th className="px-4 py-3 text-left bg-[#ccfbf1]">Time</th>
-          <th className="px-4 py-3 w-10 bg-[#ccfbf1]" />
-        </tr>
-      </thead>
-      <tbody>
-        {logs.map((log, idx) => {
-          const { label, cls } = actionStyle(log.action)
-          const entCls    = entityStyle[log.entityType] ?? 'bg-gray-100 text-gray-600'
-          const isExpanded = expandedId === log.id
+    <>
+      <table className="w-full text-sm">
+        <thead className="sticky top-0 z-10">
+          <tr className="border-b border-gray-200 text-xs text-gray-600 font-semibold uppercase tracking-wide">
+            <th className="px-5 py-3 text-left w-10 bg-[#ccfbf1]">S.no</th>
+            <th className="pl-2 pr-3 py-3 text-left bg-[#ccfbf1]">Entity</th>
+            <th className="px-5 py-3 text-left bg-[#ccfbf1]">Action</th>
+            <th className="px-5 py-3 text-left bg-[#ccfbf1]">Description</th>
+            <th className="px-5 py-3 text-left bg-[#ccfbf1]">Actor</th>
+            <th className="px-5 py-3 text-left bg-[#ccfbf1]">Time Stamps</th>
+            <th className="px-5 py-3 text-left bg-[#ccfbf1]">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {logs.map((log, idx) => {
+            const { label, cls } = actionStyle(log.action)
+            const entCls = entityStyle[log.entityType] ?? 'text-gray-400'
+            const hasChanges = !!(log.before || log.after)
 
-          const changes = (log.changes && log.changes.length > 0)
-            ? log.changes.map((c) => ({ field: c.field, from: c.from, to: c.to }))
-            : computeDiff(log.before, log.after)
+            return (
+              <tr key={log.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                <td className="px-5 py-3 text-gray-400 text-xs">{startEntry + idx}</td>
 
-          return (
-            <Fragment key={log.id}>
-              <tr className={`border-b border-gray-50 transition-colors align-top ${isExpanded ? 'bg-gray-50' : 'hover:bg-gray-50'}`}>
-
-                {/* S.No */}
-                <td className="px-4 py-3 text-gray-400 text-xs">{startEntry + idx}</td>
-
-                {/* Entity (Task Name) */}
-                <td className="px-4 py-3">
-                  {log.entityName ? (
-                    <p className="text-xs font-semibold text-gray-800">{log.entityName}</p>
+                <td className="pl-2 pr-3 py-3 w-[220px]">
+                  {log.entityName && log.entityName.length > 18 ? (
+                    <Tooltip label={log.entityName}>
+                      <div className="flex items-center gap-1 min-w-0">
+                        <span className="text-xs font-medium text-gray-800 truncate">
+                          {log.entityName}
+                        </span>
+                        <span className={`text-xs font-medium capitalize flex-shrink-0 ${entCls}`}>
+                          [{log.entityType}]
+                        </span>
+                      </div>
+                    </Tooltip>
                   ) : (
-                    <p className="text-xs font-semibold text-gray-800 font-mono">{log.entityId.slice(0, 8)}…</p>
+                    <div className="flex items-center gap-1 min-w-0">
+                      <span className="text-xs font-medium text-gray-800 truncate">
+                        {log.entityName ?? <span className="font-mono text-gray-400">{log.entityId.slice(0, 8)}…</span>}
+                      </span>
+                      <span className={`text-xs font-medium capitalize flex-shrink-0 ${entCls}`}>
+                        [{log.entityType}]
+                      </span>
+                    </div>
                   )}
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium capitalize mt-1 inline-block ${entCls}`}>
-                    {log.entityType}
-                  </span>
                 </td>
 
-                {/* Action */}
-                <td className="px-4 py-3 whitespace-nowrap">
+                <td className="px-5 py-3">
                   <span className={`text-xs px-2 py-0.5 rounded font-medium ${cls}`}>{label}</span>
-                  <p className="text-xs text-gray-400 mt-0.5">{log.action}</p>
                 </td>
 
-                {/* Description */}
-                <td className="px-4 py-3 min-w-[200px] max-w-[340px]">
-                  <p className="text-xs text-gray-600 leading-relaxed whitespace-normal break-words">
-                    {log.description ?? '—'}
-                  </p>
+                <td className="px-5 py-3 text-xs text-gray-500 max-w-xs">
+                  {log.description && log.description.length > 60 ? (
+                    <Tooltip label={log.description} wrap>
+                      <span className="line-clamp-2">{log.description}</span>
+                    </Tooltip>
+                  ) : (
+                    log.description ?? '—'
+                  )}
                 </td>
 
-                {/* Actor */}
-                <td className="px-4 py-3 whitespace-nowrap">
-                  <p className="text-xs font-medium text-gray-800">{log.actor.name}</p>
+                <td className="px-5 py-3">
+                  <p className="font-medium text-gray-800 text-xs">{log.actor.name}</p>
                   <p className="text-xs text-gray-400">{log.actor.email}</p>
                 </td>
 
-                {/* Time — full date & time */}
-                <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
-                  {formatDate(log.createdAt)}
+                <td className="px-5 py-3 text-xs text-gray-500 whitespace-nowrap">
+                  {formatDateTime(log.createdAt)}
                 </td>
 
-                {/* Expand toggle */}
-                <td className="px-4 py-3">
-                  <button
-                    onClick={() => setExpandedId(isExpanded ? null : log.id)}
-                    className="text-gray-400 hover:text-gray-700 transition-colors cursor-pointer"
-                    title={isExpanded ? 'Collapse' : 'View changes'}
-                  >
-                    {isExpanded
-                      ? <ChevronDown  size={15} />
-                      : <ChevronRight size={15} />}
-                  </button>
+                <td className="px-5 py-3 text-center">
+                  {hasChanges && (
+                    <Tooltip label="View changes">
+                      <button
+                        onClick={() => setSelectedLog(log)}
+                        className="p-1.5 text-gray-400 border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-gray-700 transition-colors cursor-pointer"
+                      >
+                        <Eye size={14} />
+                      </button>
+                    </Tooltip>
+                  )}
                 </td>
               </tr>
+            )
+          })}
+        </tbody>
+      </table>
 
-              {/* Inline changes row */}
-              {isExpanded && (
-                <tr className="border-b border-blue-100 bg-blue-50">
-                  <td colSpan={7} className="px-8 py-4">
-                    {changes.length > 0 ? (
-                      <div className="space-y-2">
-                        <p className="text-[10px] font-semibold text-blue-400 uppercase tracking-wide mb-3">
-                          Changes Made
-                        </p>
-                        {changes.map((c, i) => (
-                          <div key={i} className="flex items-center gap-3">
-                            <span className="text-xs font-semibold text-gray-600 w-32 flex-shrink-0 capitalize">
-                              {formatFieldName(c.field)}
-                            </span>
-                            <span className="text-xs px-2.5 py-0.5 rounded-lg bg-red-100 text-red-600 font-medium">
-                              {formatFieldValue(c.field, c.from)}
-                            </span>
-                            <ArrowRight size={12} className="text-gray-400 flex-shrink-0" />
-                            <span className="text-xs px-2.5 py-0.5 rounded-lg bg-green-100 text-green-700 font-semibold">
-                              {formatFieldValue(c.field, c.to)}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-gray-400 italic">No changes recorded for this entry.</p>
-                    )}
-                  </td>
-                </tr>
-              )}
-            </Fragment>
-          )
-        })}
-      </tbody>
-    </table>
+      {/* Right-side drawer */}
+      {selectedLog && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 z-40 bg-black/20"
+            onClick={() => setSelectedLog(null)}
+          />
+
+          {/* Drawer panel */}
+          <div className="fixed top-0 right-0 h-full w-[420px] bg-white z-50 shadow-2xl flex flex-col">
+
+            {/* Header */}
+            <div className="flex items-start justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
+              <div>
+                <p className="text-sm font-semibold text-gray-800">Audit Log Detail</p>
+                <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                  <span className="text-xs text-gray-500 font-medium">
+                    {selectedLog.entityName ?? selectedLog.entityId.slice(0, 8) + '…'}
+                  </span>
+                  <span className={`text-xs px-1.5 py-0.5 rounded font-medium capitalize ${entityStyle[selectedLog.entityType] ?? 'bg-gray-100 text-gray-600'}`}>
+                    {selectedLog.entityType}
+                  </span>
+                  <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${actionStyle(selectedLog.action).cls}`}>
+                    {actionStyle(selectedLog.action).label}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedLog(null)}
+                className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer flex-shrink-0"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Meta */}
+            <div className="px-5 py-3 border-b border-gray-100 flex-shrink-0 flex items-center justify-between text-xs text-gray-400">
+              <span>By <span className="text-gray-600 font-medium">{selectedLog.actor.name}</span></span>
+              <span>{formatDateTime(selectedLog.createdAt)}</span>
+            </div>
+
+            {/* Changes */}
+            <div className="flex-1 overflow-y-auto">
+              <DrawerChanges log={selectedLog} />
+            </div>
+
+          </div>
+        </>
+      )}
+    </>
   )
 }

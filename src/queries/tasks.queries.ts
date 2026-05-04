@@ -8,12 +8,12 @@ import type { TasksParams, CreateTaskBody, UpdateTaskBody } from '../types/task.
 
 // ─── GET /api/tasks ───────────────────────────────────────────────────────────
 
-export function useTasks(params: TasksParams = {}, options?: { enabled?: boolean }) {
+export function useTasks(params: TasksParams = {}) {
   return useQuery({
     queryKey:        ['tasks', params],
     queryFn:         () => getTasksApi(params),
     placeholderData: (prev) => prev,
-    enabled:         (options?.enabled ?? true) && !!authStore.state.accessToken,
+    enabled:         !!authStore.state.accessToken,
   })
 }
 

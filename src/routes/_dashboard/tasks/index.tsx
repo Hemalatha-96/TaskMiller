@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import {
   Plus, Search, ChevronDown,
@@ -12,23 +12,24 @@ import { useOrgContext } from '../../../store/orgContext.store'
 import { useDebounce } from '../../../hooks/useDebounce'
 import StatsCard from '../../../components/ui/StatsCard'
 import Pagination from '../../../components/ui/Pagination'
+import DateRangeFilter from '../../../components/ui/DateRangeFilter'
+import ProjectFilterDropdown from '../../../components/ui/ProjectFilterDropdown'
 import TaskTable from '../../../components/tasks/TaskTable'
-import DateRangePicker from '../../../components/ui/DateRangePicker'
 import ConfirmDeleteModal from '../../../components/common/ConfirmDeleteModal'
 import { StatsSkeleton, TableSkeleton } from '../../../components/ui/Skeleton'
 import ErrorMessage from '../../../components/common/ErrorMessage'
-import Kbd from '../../../components/ui/Kbd'
-import type { Task, TaskStatusFilter } from '../../../types/task.types'
+import type { Task, TaskStatus, TaskPriority } from '../../../types/task.types'
 import type { ApiError } from '../../../types/api.types'
 
 export const Route = createFileRoute('/_dashboard/tasks/')({
   validateSearch: (search: Record<string, unknown>) => ({
-    search:       (search.search as string)       || undefined,
-    status:       ((search.status as string)      || undefined) as TaskStatusFilter | undefined,
-    projectId:    (search.projectId as string)    || undefined,
-    dueDateFrom:  (search.dueDateFrom as string)  || undefined,
-    dueDateTo:    (search.dueDateTo as string)    || undefined,
-    sortBy:       (search.sortBy as string)       || undefined,
+    search:       (search.search as string)      || undefined,
+    status:       ((search.status as string)     || undefined) as TaskStatus | undefined,
+    priority:     ((search.priority as string)   || undefined) as TaskPriority | undefined,
+    projectId:    (search.projectId as string)   || undefined,
+    dueDateFrom:  (search.dueDateFrom as string) || undefined,
+    dueDateTo:    (search.dueDateTo   as string) || undefined,
+    sortBy:       (search.sortBy as string)      || undefined,
     sortDir:      (search.sortDir as string) === 'desc' ? 'desc' as const : undefined,
     page:         Number(search.page)  > 1  ? Number(search.page)  : undefined,
     limit:        Number(search.limit) > 0 && Number(search.limit) !== 10 ? Number(search.limit) : undefined,
@@ -44,21 +45,8 @@ function TasksPage() {
   const assignedUserId = isDeveloper ? (user?.id ?? undefined) : undefined
 
   const navigate = Route.useNavigate()
-  const { search = '', status = '', projectId = '', dueDateFrom, dueDateTo, sortBy = '', sortDir = 'asc', page = 1, limit = 10 } = Route.useSearch()
+  const { search = '', status = '', priority = '', projectId = '', dueDateFrom, dueDateTo, sortBy = '', sortDir = 'asc', page = 1, limit = 10 } = Route.useSearch()
   const [deleteTask, setDeleteTask] = useState<Task | null>(null)
-  const [searchFocused, setSearchFocused] = useState(false)
-  const searchRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key !== '/') return
-      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return
-      e.preventDefault()
-      searchRef.current?.focus()
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [])
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const setParams = (params: Record<string, any>) =>
@@ -74,14 +62,15 @@ function TasksPage() {
   const sortOrder = sortBy ? sortDir : undefined
 
   const { data, isLoading, isFetching, isError, error } = useTasks({
-    search:       debouncedSearch || undefined,
-    status:       status     || undefined,
-    projectId:    projectId  || undefined,
+    search:      debouncedSearch || undefined,
+    status:      status          || undefined,
+    priority:    priority        || undefined,
+    projectId:   projectId       || undefined,
     orgId,
     assignedUserId,
-    dueDateFrom,
-    dueDateTo,
-    sortBy:       sortBy     || undefined,
+    dueDateFrom: dueDateFrom     || undefined,
+    dueDateTo:   dueDateTo       || undefined,
+    sortBy:      sortBy          || undefined,
     sortOrder,
     page,
     limit,
@@ -118,11 +107,12 @@ function TasksPage() {
     if (!deleteTask) return
     deleteTaskMutation(deleteTask.id, { onSuccess: () => setDeleteTask(null) })
   }
-  const handleSearch        = (val: string) => setParams({ search: val || undefined, page: undefined })
-  const handleStatusChange  = (val: string) => setParams({ status: val || undefined, page: undefined })
-  const handleProjectChange = (val: string) => setParams({ projectId: val || undefined, page: undefined })
-  const handleDateRange     = (range: { from: string | undefined; to: string | undefined }) =>
-    setParams({ dueDateFrom: range.from || undefined, dueDateTo: range.to || undefined, page: undefined })
+  const handleSearch          = (val: string) => setParams({ search: val || undefined,    page: undefined })
+  const handleStatusChange    = (val: string) => setParams({ status: val || undefined,    page: undefined })
+  const handlePriorityChange  = (val: string) => setParams({ priority: val || undefined,  page: undefined })
+  const handleProjectChange   = (val: string) => setParams({ projectId: val || undefined, page: undefined })
+  const handleDateRange       = (from: string | undefined, to: string | undefined) =>
+    setParams({ dueDateFrom: from, dueDateTo: to, page: undefined })
   const handleLimit         = (val: number) => setParams({ limit: val !== 10 ? val : undefined, page: undefined })
   const handleSorting       = (updater: any) => {
     const next: SortingState = typeof updater === 'function' ? updater(sorting) : updater
@@ -130,7 +120,7 @@ function TasksPage() {
   }
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 overflow-auto pb-6">
+    <div className="flex flex-col flex-1 overflow-hidden">
 
       {/* Stats */}
       <div className="flex-shrink-0 mb-5">
@@ -144,7 +134,7 @@ function TasksPage() {
       </div>
 
       {/* Table card */}
-      <div className="flex flex-col flex-shrink-0 bg-white rounded-xl border border-gray-100 mb-6">
+      <div className="flex flex-col flex-1 overflow-hidden bg-white rounded-xl border border-gray-100 min-h-0">
 
         {/* Header */}
         <div className="flex-shrink-0 flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
@@ -154,18 +144,14 @@ function TasksPage() {
           </h2>
           <div className="flex items-center gap-2 flex-wrap">
 
-            <div className={`flex items-center gap-2 border rounded-lg px-3 py-1.5 transition-all duration-200 ${searchFocused ? 'border-orange-300 bg-white shadow-md shadow-orange-50' : 'border-gray-200 bg-gray-50'}`}>
+            <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-1.5 bg-gray-50">
               <Search size={14} className={isFetching ? 'text-orange-400 animate-pulse' : 'text-gray-400'} />
               <input
-                ref={searchRef}
                 value={search}
                 onChange={(e) => handleSearch(e.target.value)}
-                onFocus={() => setSearchFocused(true)}
-                onBlur={() => setSearchFocused(false)}
                 placeholder="Search by task"
                 className="bg-transparent outline-none w-32 text-gray-700 placeholder-gray-400 text-xs"
               />
-              {!searchFocused && !search && <Kbd>/</Kbd>}
             </div>
 
             <div className="relative">
@@ -186,18 +172,28 @@ function TasksPage() {
 
             <div className="relative">
               <select
-                value={projectId}
-                onChange={(e) => handleProjectChange(e.target.value)}
+                value={priority}
+                onChange={(e) => handlePriorityChange(e.target.value)}
                 className="appearance-none border border-gray-200 rounded-lg pl-3 pr-7 py-1.5 text-xs text-gray-500 bg-gray-50 outline-none cursor-pointer"
               >
-                <option value="">All Projects</option>
-                {projects.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+                <option value="">All Priority</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="urgent">Urgent</option>
               </select>
               <ChevronDown size={12} className="absolute right-2 top-2.5 text-gray-400 pointer-events-none" />
             </div>
 
-            <DateRangePicker
-              value={{ from: dueDateFrom, to: dueDateTo }}
+            <ProjectFilterDropdown
+              value={projectId}
+              onChange={handleProjectChange}
+              projects={projects}
+            />
+
+            <DateRangeFilter
+              from={dueDateFrom}
+              to={dueDateTo}
               onChange={handleDateRange}
             />
 
@@ -214,7 +210,7 @@ function TasksPage() {
         </div>
 
         {/* Table */}
-        <div className="min-w-max md:min-w-0">
+        <div className="flex-1 overflow-y-auto">
           {isLoading ? (
             <div className="p-5">
               <TableSkeleton rows={8} cols={7} />

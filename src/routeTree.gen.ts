@@ -14,23 +14,29 @@ import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DashboardProfileRouteImport } from './routes/_dashboard/profile'
 import { Route as DashboardDashboardRouteImport } from './routes/_dashboard/dashboard'
-import { Route as DashboardAuditLogsRouteImport } from './routes/_dashboard/audit-logs'
 import { Route as AuthOtpRouteImport } from './routes/_auth/otp'
 import { Route as AuthLoginRouteImport } from './routes/_auth/login'
 import { Route as DashboardUsersIndexRouteImport } from './routes/_dashboard/users/index'
 import { Route as DashboardTasksIndexRouteImport } from './routes/_dashboard/tasks/index'
 import { Route as DashboardProjectsIndexRouteImport } from './routes/_dashboard/projects/index'
 import { Route as DashboardOrganizationsIndexRouteImport } from './routes/_dashboard/organizations/index'
+import { Route as DashboardAuditLogsIndexRouteImport } from './routes/_dashboard/audit-logs/index'
 import { Route as DashboardUsersNewRouteImport } from './routes/_dashboard/users/new'
 import { Route as DashboardUsersUserIdRouteImport } from './routes/_dashboard/users/$userId'
 import { Route as DashboardTasksNewRouteImport } from './routes/_dashboard/tasks/new'
 import { Route as DashboardTasksTaskIdRouteImport } from './routes/_dashboard/tasks/$taskId'
+import { Route as DashboardSuperadminOrganizationsRouteImport } from './routes/_dashboard/superadmin/organizations'
+import { Route as DashboardSuperadminDashboardRouteImport } from './routes/_dashboard/superadmin/dashboard'
 import { Route as DashboardProjectsNewRouteImport } from './routes/_dashboard/projects/new'
 import { Route as DashboardProjectsProjectIdRouteImport } from './routes/_dashboard/projects/$projectId'
 import { Route as DashboardOrganizationsNewRouteImport } from './routes/_dashboard/organizations/new'
 import { Route as DashboardOrganizationsOrgIdRouteImport } from './routes/_dashboard/organizations/$orgId'
+import { Route as DashboardAuditLogsLogIdRouteImport } from './routes/_dashboard/audit-logs/$logId'
+import { Route as DashboardAdminDashboardRouteImport } from './routes/_dashboard/admin/dashboard'
+import { Route as DashboardSuperadminOrganizationsIndexRouteImport } from './routes/_dashboard/superadmin/organizations/index'
 import { Route as DashboardTasksTaskIdSubtaskRouteImport } from './routes/_dashboard/tasks/$taskId_/subtask'
 import { Route as DashboardTasksTaskIdEditRouteImport } from './routes/_dashboard/tasks/$taskId_/edit'
+import { Route as DashboardSuperadminOrganizationsNewRouteImport } from './routes/_dashboard/superadmin/organizations/new'
 import { Route as DashboardProjectsProjectIdEditRouteImport } from './routes/_dashboard/projects/$projectId_/edit'
 import { Route as DashboardOrganizationsOrgIdAddMemberRouteImport } from './routes/_dashboard/organizations/$orgId_/add-member'
 
@@ -55,11 +61,6 @@ const DashboardProfileRoute = DashboardProfileRouteImport.update({
 const DashboardDashboardRoute = DashboardDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
-  getParentRoute: () => DashboardRoute,
-} as any)
-const DashboardAuditLogsRoute = DashboardAuditLogsRouteImport.update({
-  id: '/audit-logs',
-  path: '/audit-logs',
   getParentRoute: () => DashboardRoute,
 } as any)
 const AuthOtpRoute = AuthOtpRouteImport.update({
@@ -93,6 +94,11 @@ const DashboardOrganizationsIndexRoute =
     path: '/organizations/',
     getParentRoute: () => DashboardRoute,
   } as any)
+const DashboardAuditLogsIndexRoute = DashboardAuditLogsIndexRouteImport.update({
+  id: '/audit-logs/',
+  path: '/audit-logs/',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardUsersNewRoute = DashboardUsersNewRouteImport.update({
   id: '/users/new',
   path: '/users/new',
@@ -113,6 +119,18 @@ const DashboardTasksTaskIdRoute = DashboardTasksTaskIdRouteImport.update({
   path: '/tasks/$taskId',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardSuperadminOrganizationsRoute =
+  DashboardSuperadminOrganizationsRouteImport.update({
+    id: '/superadmin/organizations',
+    path: '/superadmin/organizations',
+    getParentRoute: () => DashboardRoute,
+  } as any)
+const DashboardSuperadminDashboardRoute =
+  DashboardSuperadminDashboardRouteImport.update({
+    id: '/superadmin/dashboard',
+    path: '/superadmin/dashboard',
+    getParentRoute: () => DashboardRoute,
+  } as any)
 const DashboardProjectsNewRoute = DashboardProjectsNewRouteImport.update({
   id: '/projects/new',
   path: '/projects/new',
@@ -136,6 +154,22 @@ const DashboardOrganizationsOrgIdRoute =
     path: '/organizations/$orgId',
     getParentRoute: () => DashboardRoute,
   } as any)
+const DashboardAuditLogsLogIdRoute = DashboardAuditLogsLogIdRouteImport.update({
+  id: '/audit-logs/$logId',
+  path: '/audit-logs/$logId',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardAdminDashboardRoute = DashboardAdminDashboardRouteImport.update({
+  id: '/admin/dashboard',
+  path: '/admin/dashboard',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardSuperadminOrganizationsIndexRoute =
+  DashboardSuperadminOrganizationsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => DashboardSuperadminOrganizationsRoute,
+  } as any)
 const DashboardTasksTaskIdSubtaskRoute =
   DashboardTasksTaskIdSubtaskRouteImport.update({
     id: '/tasks/$taskId_/subtask',
@@ -147,6 +181,12 @@ const DashboardTasksTaskIdEditRoute =
     id: '/tasks/$taskId_/edit',
     path: '/tasks/$taskId/edit',
     getParentRoute: () => DashboardRoute,
+  } as any)
+const DashboardSuperadminOrganizationsNewRoute =
+  DashboardSuperadminOrganizationsNewRouteImport.update({
+    id: '/new',
+    path: '/new',
+    getParentRoute: () => DashboardSuperadminOrganizationsRoute,
   } as any)
 const DashboardProjectsProjectIdEditRoute =
   DashboardProjectsProjectIdEditRouteImport.update({
@@ -165,49 +205,60 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof AuthLoginRoute
   '/otp': typeof AuthOtpRoute
-  '/audit-logs': typeof DashboardAuditLogsRoute
   '/dashboard': typeof DashboardDashboardRoute
   '/profile': typeof DashboardProfileRoute
+  '/admin/dashboard': typeof DashboardAdminDashboardRoute
+  '/audit-logs/$logId': typeof DashboardAuditLogsLogIdRoute
   '/organizations/$orgId': typeof DashboardOrganizationsOrgIdRoute
   '/organizations/new': typeof DashboardOrganizationsNewRoute
   '/projects/$projectId': typeof DashboardProjectsProjectIdRoute
   '/projects/new': typeof DashboardProjectsNewRoute
+  '/superadmin/dashboard': typeof DashboardSuperadminDashboardRoute
+  '/superadmin/organizations': typeof DashboardSuperadminOrganizationsRouteWithChildren
   '/tasks/$taskId': typeof DashboardTasksTaskIdRoute
   '/tasks/new': typeof DashboardTasksNewRoute
   '/users/$userId': typeof DashboardUsersUserIdRoute
   '/users/new': typeof DashboardUsersNewRoute
+  '/audit-logs/': typeof DashboardAuditLogsIndexRoute
   '/organizations/': typeof DashboardOrganizationsIndexRoute
   '/projects/': typeof DashboardProjectsIndexRoute
   '/tasks/': typeof DashboardTasksIndexRoute
   '/users/': typeof DashboardUsersIndexRoute
   '/organizations/$orgId/add-member': typeof DashboardOrganizationsOrgIdAddMemberRoute
   '/projects/$projectId/edit': typeof DashboardProjectsProjectIdEditRoute
+  '/superadmin/organizations/new': typeof DashboardSuperadminOrganizationsNewRoute
   '/tasks/$taskId/edit': typeof DashboardTasksTaskIdEditRoute
   '/tasks/$taskId/subtask': typeof DashboardTasksTaskIdSubtaskRoute
+  '/superadmin/organizations/': typeof DashboardSuperadminOrganizationsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof AuthLoginRoute
   '/otp': typeof AuthOtpRoute
-  '/audit-logs': typeof DashboardAuditLogsRoute
   '/dashboard': typeof DashboardDashboardRoute
   '/profile': typeof DashboardProfileRoute
+  '/admin/dashboard': typeof DashboardAdminDashboardRoute
+  '/audit-logs/$logId': typeof DashboardAuditLogsLogIdRoute
   '/organizations/$orgId': typeof DashboardOrganizationsOrgIdRoute
   '/organizations/new': typeof DashboardOrganizationsNewRoute
   '/projects/$projectId': typeof DashboardProjectsProjectIdRoute
   '/projects/new': typeof DashboardProjectsNewRoute
+  '/superadmin/dashboard': typeof DashboardSuperadminDashboardRoute
   '/tasks/$taskId': typeof DashboardTasksTaskIdRoute
   '/tasks/new': typeof DashboardTasksNewRoute
   '/users/$userId': typeof DashboardUsersUserIdRoute
   '/users/new': typeof DashboardUsersNewRoute
+  '/audit-logs': typeof DashboardAuditLogsIndexRoute
   '/organizations': typeof DashboardOrganizationsIndexRoute
   '/projects': typeof DashboardProjectsIndexRoute
   '/tasks': typeof DashboardTasksIndexRoute
   '/users': typeof DashboardUsersIndexRoute
   '/organizations/$orgId/add-member': typeof DashboardOrganizationsOrgIdAddMemberRoute
   '/projects/$projectId/edit': typeof DashboardProjectsProjectIdEditRoute
+  '/superadmin/organizations/new': typeof DashboardSuperadminOrganizationsNewRoute
   '/tasks/$taskId/edit': typeof DashboardTasksTaskIdEditRoute
   '/tasks/$taskId/subtask': typeof DashboardTasksTaskIdSubtaskRoute
+  '/superadmin/organizations': typeof DashboardSuperadminOrganizationsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -216,25 +267,31 @@ export interface FileRoutesById {
   '/_dashboard': typeof DashboardRouteWithChildren
   '/_auth/login': typeof AuthLoginRoute
   '/_auth/otp': typeof AuthOtpRoute
-  '/_dashboard/audit-logs': typeof DashboardAuditLogsRoute
   '/_dashboard/dashboard': typeof DashboardDashboardRoute
   '/_dashboard/profile': typeof DashboardProfileRoute
+  '/_dashboard/admin/dashboard': typeof DashboardAdminDashboardRoute
+  '/_dashboard/audit-logs/$logId': typeof DashboardAuditLogsLogIdRoute
   '/_dashboard/organizations/$orgId': typeof DashboardOrganizationsOrgIdRoute
   '/_dashboard/organizations/new': typeof DashboardOrganizationsNewRoute
   '/_dashboard/projects/$projectId': typeof DashboardProjectsProjectIdRoute
   '/_dashboard/projects/new': typeof DashboardProjectsNewRoute
+  '/_dashboard/superadmin/dashboard': typeof DashboardSuperadminDashboardRoute
+  '/_dashboard/superadmin/organizations': typeof DashboardSuperadminOrganizationsRouteWithChildren
   '/_dashboard/tasks/$taskId': typeof DashboardTasksTaskIdRoute
   '/_dashboard/tasks/new': typeof DashboardTasksNewRoute
   '/_dashboard/users/$userId': typeof DashboardUsersUserIdRoute
   '/_dashboard/users/new': typeof DashboardUsersNewRoute
+  '/_dashboard/audit-logs/': typeof DashboardAuditLogsIndexRoute
   '/_dashboard/organizations/': typeof DashboardOrganizationsIndexRoute
   '/_dashboard/projects/': typeof DashboardProjectsIndexRoute
   '/_dashboard/tasks/': typeof DashboardTasksIndexRoute
   '/_dashboard/users/': typeof DashboardUsersIndexRoute
   '/_dashboard/organizations/$orgId_/add-member': typeof DashboardOrganizationsOrgIdAddMemberRoute
   '/_dashboard/projects/$projectId_/edit': typeof DashboardProjectsProjectIdEditRoute
+  '/_dashboard/superadmin/organizations/new': typeof DashboardSuperadminOrganizationsNewRoute
   '/_dashboard/tasks/$taskId_/edit': typeof DashboardTasksTaskIdEditRoute
   '/_dashboard/tasks/$taskId_/subtask': typeof DashboardTasksTaskIdSubtaskRoute
+  '/_dashboard/superadmin/organizations/': typeof DashboardSuperadminOrganizationsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -242,49 +299,60 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/otp'
-    | '/audit-logs'
     | '/dashboard'
     | '/profile'
+    | '/admin/dashboard'
+    | '/audit-logs/$logId'
     | '/organizations/$orgId'
     | '/organizations/new'
     | '/projects/$projectId'
     | '/projects/new'
+    | '/superadmin/dashboard'
+    | '/superadmin/organizations'
     | '/tasks/$taskId'
     | '/tasks/new'
     | '/users/$userId'
     | '/users/new'
+    | '/audit-logs/'
     | '/organizations/'
     | '/projects/'
     | '/tasks/'
     | '/users/'
     | '/organizations/$orgId/add-member'
     | '/projects/$projectId/edit'
+    | '/superadmin/organizations/new'
     | '/tasks/$taskId/edit'
     | '/tasks/$taskId/subtask'
+    | '/superadmin/organizations/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/login'
     | '/otp'
-    | '/audit-logs'
     | '/dashboard'
     | '/profile'
+    | '/admin/dashboard'
+    | '/audit-logs/$logId'
     | '/organizations/$orgId'
     | '/organizations/new'
     | '/projects/$projectId'
     | '/projects/new'
+    | '/superadmin/dashboard'
     | '/tasks/$taskId'
     | '/tasks/new'
     | '/users/$userId'
     | '/users/new'
+    | '/audit-logs'
     | '/organizations'
     | '/projects'
     | '/tasks'
     | '/users'
     | '/organizations/$orgId/add-member'
     | '/projects/$projectId/edit'
+    | '/superadmin/organizations/new'
     | '/tasks/$taskId/edit'
     | '/tasks/$taskId/subtask'
+    | '/superadmin/organizations'
   id:
     | '__root__'
     | '/'
@@ -292,25 +360,31 @@ export interface FileRouteTypes {
     | '/_dashboard'
     | '/_auth/login'
     | '/_auth/otp'
-    | '/_dashboard/audit-logs'
     | '/_dashboard/dashboard'
     | '/_dashboard/profile'
+    | '/_dashboard/admin/dashboard'
+    | '/_dashboard/audit-logs/$logId'
     | '/_dashboard/organizations/$orgId'
     | '/_dashboard/organizations/new'
     | '/_dashboard/projects/$projectId'
     | '/_dashboard/projects/new'
+    | '/_dashboard/superadmin/dashboard'
+    | '/_dashboard/superadmin/organizations'
     | '/_dashboard/tasks/$taskId'
     | '/_dashboard/tasks/new'
     | '/_dashboard/users/$userId'
     | '/_dashboard/users/new'
+    | '/_dashboard/audit-logs/'
     | '/_dashboard/organizations/'
     | '/_dashboard/projects/'
     | '/_dashboard/tasks/'
     | '/_dashboard/users/'
     | '/_dashboard/organizations/$orgId_/add-member'
     | '/_dashboard/projects/$projectId_/edit'
+    | '/_dashboard/superadmin/organizations/new'
     | '/_dashboard/tasks/$taskId_/edit'
     | '/_dashboard/tasks/$taskId_/subtask'
+    | '/_dashboard/superadmin/organizations/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -356,13 +430,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardDashboardRouteImport
       parentRoute: typeof DashboardRoute
     }
-    '/_dashboard/audit-logs': {
-      id: '/_dashboard/audit-logs'
-      path: '/audit-logs'
-      fullPath: '/audit-logs'
-      preLoaderRoute: typeof DashboardAuditLogsRouteImport
-      parentRoute: typeof DashboardRoute
-    }
     '/_auth/otp': {
       id: '/_auth/otp'
       path: '/otp'
@@ -405,6 +472,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardOrganizationsIndexRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/_dashboard/audit-logs/': {
+      id: '/_dashboard/audit-logs/'
+      path: '/audit-logs'
+      fullPath: '/audit-logs/'
+      preLoaderRoute: typeof DashboardAuditLogsIndexRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/_dashboard/users/new': {
       id: '/_dashboard/users/new'
       path: '/users/new'
@@ -431,6 +505,20 @@ declare module '@tanstack/react-router' {
       path: '/tasks/$taskId'
       fullPath: '/tasks/$taskId'
       preLoaderRoute: typeof DashboardTasksTaskIdRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/_dashboard/superadmin/organizations': {
+      id: '/_dashboard/superadmin/organizations'
+      path: '/superadmin/organizations'
+      fullPath: '/superadmin/organizations'
+      preLoaderRoute: typeof DashboardSuperadminOrganizationsRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/_dashboard/superadmin/dashboard': {
+      id: '/_dashboard/superadmin/dashboard'
+      path: '/superadmin/dashboard'
+      fullPath: '/superadmin/dashboard'
+      preLoaderRoute: typeof DashboardSuperadminDashboardRouteImport
       parentRoute: typeof DashboardRoute
     }
     '/_dashboard/projects/new': {
@@ -461,6 +549,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardOrganizationsOrgIdRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/_dashboard/audit-logs/$logId': {
+      id: '/_dashboard/audit-logs/$logId'
+      path: '/audit-logs/$logId'
+      fullPath: '/audit-logs/$logId'
+      preLoaderRoute: typeof DashboardAuditLogsLogIdRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/_dashboard/admin/dashboard': {
+      id: '/_dashboard/admin/dashboard'
+      path: '/admin/dashboard'
+      fullPath: '/admin/dashboard'
+      preLoaderRoute: typeof DashboardAdminDashboardRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/_dashboard/superadmin/organizations/': {
+      id: '/_dashboard/superadmin/organizations/'
+      path: '/'
+      fullPath: '/superadmin/organizations/'
+      preLoaderRoute: typeof DashboardSuperadminOrganizationsIndexRouteImport
+      parentRoute: typeof DashboardSuperadminOrganizationsRoute
+    }
     '/_dashboard/tasks/$taskId_/subtask': {
       id: '/_dashboard/tasks/$taskId_/subtask'
       path: '/tasks/$taskId/subtask'
@@ -474,6 +583,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/tasks/$taskId/edit'
       preLoaderRoute: typeof DashboardTasksTaskIdEditRouteImport
       parentRoute: typeof DashboardRoute
+    }
+    '/_dashboard/superadmin/organizations/new': {
+      id: '/_dashboard/superadmin/organizations/new'
+      path: '/new'
+      fullPath: '/superadmin/organizations/new'
+      preLoaderRoute: typeof DashboardSuperadminOrganizationsNewRouteImport
+      parentRoute: typeof DashboardSuperadminOrganizationsRoute
     }
     '/_dashboard/projects/$projectId_/edit': {
       id: '/_dashboard/projects/$projectId_/edit'
@@ -504,18 +620,40 @@ const AuthRouteChildren: AuthRouteChildren = {
 
 const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)
 
+interface DashboardSuperadminOrganizationsRouteChildren {
+  DashboardSuperadminOrganizationsNewRoute: typeof DashboardSuperadminOrganizationsNewRoute
+  DashboardSuperadminOrganizationsIndexRoute: typeof DashboardSuperadminOrganizationsIndexRoute
+}
+
+const DashboardSuperadminOrganizationsRouteChildren: DashboardSuperadminOrganizationsRouteChildren =
+  {
+    DashboardSuperadminOrganizationsNewRoute:
+      DashboardSuperadminOrganizationsNewRoute,
+    DashboardSuperadminOrganizationsIndexRoute:
+      DashboardSuperadminOrganizationsIndexRoute,
+  }
+
+const DashboardSuperadminOrganizationsRouteWithChildren =
+  DashboardSuperadminOrganizationsRoute._addFileChildren(
+    DashboardSuperadminOrganizationsRouteChildren,
+  )
+
 interface DashboardRouteChildren {
-  DashboardAuditLogsRoute: typeof DashboardAuditLogsRoute
   DashboardDashboardRoute: typeof DashboardDashboardRoute
   DashboardProfileRoute: typeof DashboardProfileRoute
+  DashboardAdminDashboardRoute: typeof DashboardAdminDashboardRoute
+  DashboardAuditLogsLogIdRoute: typeof DashboardAuditLogsLogIdRoute
   DashboardOrganizationsOrgIdRoute: typeof DashboardOrganizationsOrgIdRoute
   DashboardOrganizationsNewRoute: typeof DashboardOrganizationsNewRoute
   DashboardProjectsProjectIdRoute: typeof DashboardProjectsProjectIdRoute
   DashboardProjectsNewRoute: typeof DashboardProjectsNewRoute
+  DashboardSuperadminDashboardRoute: typeof DashboardSuperadminDashboardRoute
+  DashboardSuperadminOrganizationsRoute: typeof DashboardSuperadminOrganizationsRouteWithChildren
   DashboardTasksTaskIdRoute: typeof DashboardTasksTaskIdRoute
   DashboardTasksNewRoute: typeof DashboardTasksNewRoute
   DashboardUsersUserIdRoute: typeof DashboardUsersUserIdRoute
   DashboardUsersNewRoute: typeof DashboardUsersNewRoute
+  DashboardAuditLogsIndexRoute: typeof DashboardAuditLogsIndexRoute
   DashboardOrganizationsIndexRoute: typeof DashboardOrganizationsIndexRoute
   DashboardProjectsIndexRoute: typeof DashboardProjectsIndexRoute
   DashboardTasksIndexRoute: typeof DashboardTasksIndexRoute
@@ -527,17 +665,22 @@ interface DashboardRouteChildren {
 }
 
 const DashboardRouteChildren: DashboardRouteChildren = {
-  DashboardAuditLogsRoute: DashboardAuditLogsRoute,
   DashboardDashboardRoute: DashboardDashboardRoute,
   DashboardProfileRoute: DashboardProfileRoute,
+  DashboardAdminDashboardRoute: DashboardAdminDashboardRoute,
+  DashboardAuditLogsLogIdRoute: DashboardAuditLogsLogIdRoute,
   DashboardOrganizationsOrgIdRoute: DashboardOrganizationsOrgIdRoute,
   DashboardOrganizationsNewRoute: DashboardOrganizationsNewRoute,
   DashboardProjectsProjectIdRoute: DashboardProjectsProjectIdRoute,
   DashboardProjectsNewRoute: DashboardProjectsNewRoute,
+  DashboardSuperadminDashboardRoute: DashboardSuperadminDashboardRoute,
+  DashboardSuperadminOrganizationsRoute:
+    DashboardSuperadminOrganizationsRouteWithChildren,
   DashboardTasksTaskIdRoute: DashboardTasksTaskIdRoute,
   DashboardTasksNewRoute: DashboardTasksNewRoute,
   DashboardUsersUserIdRoute: DashboardUsersUserIdRoute,
   DashboardUsersNewRoute: DashboardUsersNewRoute,
+  DashboardAuditLogsIndexRoute: DashboardAuditLogsIndexRoute,
   DashboardOrganizationsIndexRoute: DashboardOrganizationsIndexRoute,
   DashboardProjectsIndexRoute: DashboardProjectsIndexRoute,
   DashboardTasksIndexRoute: DashboardTasksIndexRoute,

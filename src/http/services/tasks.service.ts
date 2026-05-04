@@ -10,6 +10,7 @@ export function getTasksApi(params: TasksParams = {}): Promise<TasksResponse> {
   const query = new URLSearchParams()
   if (params.search)         query.set('search',       params.search)
   if (params.status)         query.set('status',       params.status)
+  if (params.priority)       query.set('priority',     params.priority)
   if (params.projectId)      query.set('projectId',    params.projectId)
   if (params.orgId)          query.set('orgId',        params.orgId)
   if (params.assignedUserId) query.set('assignedUserId', params.assignedUserId)

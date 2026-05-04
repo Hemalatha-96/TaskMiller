@@ -3,7 +3,7 @@
 // components import from here — never directly from http/services/.
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { loginApi, requestOtpApi, verifyOtpApi, logoutApi } from '../http/services/auth.service'
+import { loginApi, requestOtpApi, verifyOtpApi, logoutApi, forgotPasswordApi, resetPasswordApi, changePasswordApi } from '../http/services/auth.service'
 import { setAuth, clearAuth } from '../store/auth.store'
 import { setSelectedOrg } from '../store/orgContext.store'
 import { router } from '../router'
@@ -37,6 +37,32 @@ export function useVerifyOtpMutation() {
     onSuccess: (result) => {
       setAuth(result.user, result.tokens.accessToken, result.tokens.refreshToken)
     },
+  })
+}
+
+// ─── POST /api/auth/forgot-password ──────────────────────────────────────────
+
+export function useForgotPasswordMutation() {
+  return useMutation({
+    mutationFn: (email: string) => forgotPasswordApi(email),
+  })
+}
+
+// ─── POST /api/auth/reset-password ───────────────────────────────────────────
+
+export function useResetPasswordMutation() {
+  return useMutation({
+    mutationFn: ({ email, otp, newPassword }: { email: string; otp: string; newPassword: string }) =>
+      resetPasswordApi(email, otp, newPassword),
+  })
+}
+
+// ─── POST /api/auth/change-password ──────────────────────────────────────────
+
+export function useChangePasswordMutation() {
+  return useMutation({
+    mutationFn: ({ currentPassword, newPassword }: { currentPassword: string; newPassword: string }) =>
+      changePasswordApi(currentPassword, newPassword),
   })
 }
 

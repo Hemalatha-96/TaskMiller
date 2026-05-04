@@ -63,3 +63,21 @@ export function logoutApi(): Promise<void> {
   if (!refreshToken) return Promise.resolve()
   return post('/api/auth/logout', { refreshToken })
 }
+
+// ─── POST /api/auth/forgot-password ──────────────────────────────────────────
+
+export function forgotPasswordApi(email: string): Promise<{ message: string }> {
+  return post<{ message: string }>('/api/auth/forgot-password', { email })
+}
+
+// ─── POST /api/auth/reset-password ───────────────────────────────────────────
+
+export function resetPasswordApi(email: string, otp: string, newPassword: string): Promise<{ message: string }> {
+  return post<{ message: string }>('/api/auth/reset-password', { email, otp, newPassword })
+}
+
+// ─── POST /api/auth/change-password ──────────────────────────────────────────
+
+export function changePasswordApi(currentPassword: string, newPassword: string): Promise<{ message: string }> {
+  return post<{ message: string }>('/api/auth/change-password', { currentPassword, newPassword })
+}

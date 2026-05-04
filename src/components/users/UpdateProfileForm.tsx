@@ -3,6 +3,7 @@ import { X } from 'lucide-react'
 import { useUpdateMeMutation } from '../../queries/users.queries'
 import { useUploadFile } from '../../queries/uploads.queries'
 import type { UserDetail } from '../../types/user.types'
+import { getInitials } from '../../lib/utils'
 import S3Image from '../ui/S3Image'
 import ImageCropperModal from '../ui/ImageCropperModal'
 import type { ApiError } from '../../types/api.types'
@@ -103,7 +104,7 @@ export default function UpdateProfileForm({ profile, onClose }: UpdateProfileFor
               {avatarUrl ? (
                 <S3Image storageKey={avatarUrl} className="w-full h-full object-cover" />
               ) : (
-                profile.name.charAt(0).toUpperCase()
+                getInitials(profile.name)
               )}
             </div>
             
@@ -137,7 +138,7 @@ export default function UpdateProfileForm({ profile, onClose }: UpdateProfileFor
 
           {/* Name */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Name <span className="text-red-500">*</span></label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
             <input
               type="text"
               value={name}

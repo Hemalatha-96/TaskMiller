@@ -33,11 +33,6 @@ export default function OrgForm({ onClose }: OrgFormProps) {
           <h2 className="text-base font-semibold text-gray-800">Create Organization</h2>
         </div>
 
-        {errorMessage && (
-          <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-3 py-2.5 rounded-lg mb-4">
-            {errorMessage}
-          </div>
-        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -69,6 +64,10 @@ export default function OrgForm({ onClose }: OrgFormProps) {
             />
           </div>
 
+          {errorMessage && (
+            <p className="text-xs text-red-500">{errorMessage}</p>
+          )}
+
           <div className="flex gap-3 pt-1">
             <button
               type="button"
@@ -80,7 +79,7 @@ export default function OrgForm({ onClose }: OrgFormProps) {
             <button
               type="submit"
               disabled={isPending}
-              className="flex-1 bg-orange-500 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-orange-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+              className="flex-1 bg-orange-500 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-orange-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {isPending ? 'Creating...' : 'Create'}
             </button>

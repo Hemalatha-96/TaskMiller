@@ -16,22 +16,22 @@ export function formatRelativeTime(dateStr: string): string {
 
 export function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '—'
-  return new Date(dateStr).toLocaleDateString('en-IN', {
-    day:      '2-digit',
-    month:    'short',
-    year:     'numeric',
-    timeZone: 'Asia/Kolkata',
+  const datePart = dateStr.slice(0, 10)
+  const [y, m, d] = datePart.split('-').map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString('en-IN', {
+    day:   '2-digit',
+    month: 'short',
+    year:  'numeric',
   })
 }
 
 export function formatDateTime(dateStr: string): string {
   return new Date(dateStr).toLocaleString('en-IN', {
-    day:      '2-digit',
-    month:    'short',
-    year:     'numeric',
-    hour:     '2-digit',
-    minute:   '2-digit',
-    timeZone: 'Asia/Kolkata',
+    day:    '2-digit',
+    month:  'short',
+    year:   'numeric',
+    hour:   '2-digit',
+    minute: '2-digit',
   })
 }
 
@@ -94,4 +94,10 @@ export function toSlug(str: string): string {
     .replace(/[^a-z0-9\s-]/g, '')
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-')
+}
+
+export function dashboardByRole(role: string | null | undefined): string {
+  if (role === 'superadmin') return '/superadmin/dashboard'
+  if (role === 'admin')      return '/admin/dashboard'
+  return '/dashboard'
 }

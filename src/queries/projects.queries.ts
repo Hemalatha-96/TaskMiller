@@ -8,12 +8,12 @@ import type { ProjectsParams, CreateProjectBody, UpdateProjectBody } from '../ty
 
 // ─── GET /api/projects ────────────────────────────────────────────────────────
 
-export function useProjects(params: ProjectsParams = {}, options?: { enabled?: boolean }) {
+export function useProjects(params: ProjectsParams = {}) {
   return useQuery({
     queryKey:        ['projects', params],
     queryFn:         () => getProjectsApi(params),
     placeholderData: (prev) => prev,
-    enabled:         (options?.enabled ?? true) && !!authStore.state.accessToken,
+    enabled:         !!authStore.state.accessToken,
   })
 }
 

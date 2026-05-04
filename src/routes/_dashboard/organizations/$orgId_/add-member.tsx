@@ -17,7 +17,7 @@ function AddMemberPage() {
   const navigate        = useNavigate()
   const { data: orgsData, isLoading } = useOrgs()
   const resolvedId = (orgsData?.organizations ?? []).find((o) => o.slug === slug)?.id ?? ''
-  const onBack = () => navigate({ to: '/organizations/$orgId', params: { orgId: slug } })
+  const onBack = () => navigate({ to: '/organizations/$orgId', params: { orgId: slug }, search: {} as any })
 
   if (isLoading) return <FormSkeleton />
 
@@ -25,7 +25,7 @@ function AddMemberPage() {
     <div className="max-w-2xl mx-auto w-full space-y-4">
       <button
         onClick={onBack}
-        className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+        className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors cursor-pointer"
       >
         <ArrowLeft size={15} /> Back to Organization
       </button>

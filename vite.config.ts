@@ -4,13 +4,13 @@ import viteReact from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
-  resolve: { tsconfigPaths: true },
+  resolve: {
+    tsconfigPaths: true,
+    dedupe: ['react', 'react-dom', '@tanstack/react-query'],
+  },
   plugins: [
     tanstackRouter({ autoCodeSplitting: true }),
     viteReact(),
     tailwindcss(),
   ],
-  optimizeDeps: {
-    include: ['react-easy-crop', 'normalize-wheel'],
-  },
 })

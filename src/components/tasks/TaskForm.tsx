@@ -1,12 +1,14 @@
-import React, { useState } from 'react'
-import { ChevronDown, Check, Search } from 'lucide-react'
-import { useCreateTaskMutation, useUpdateTaskMutation } from '../../queries/tasks.queries'
+import React, { useState, useRef, useEffect } from 'react'
+import DatePicker from 'react-datepicker'
+import 'react-datepicker/dist/react-datepicker.css'
+import { ChevronDown, Check, Search, CalendarDays, X } from 'lucide-react'
+import { useCreateTaskMutation, useUpdateTaskMutation, useTask } from '../../queries/tasks.queries'
 import { useProjects, useProject } from '../../queries/projects.queries'
 import { useUsers } from '../../queries/users.queries'
 import { useAuth } from '../../hooks/useAuth'
 import { useOrgContext } from '../../store/orgContext.store'
-import { avatarColors } from '../../lib/utils'
-import type { Task, TaskPriority, TaskStatus, CreateTaskBody } from '../../types/task.types'
+import { avatarColors , getInitials} from '../../lib/utils'
+import type { Task, TaskPriority, CreateTaskBody } from '../../types/task.types'
 import type { ApiError } from '../../types/api.types'
 
 interface TaskFormProps {
@@ -23,12 +25,6 @@ const priorityOptions: { value: TaskPriority; label: string }[] = [
   { value: 'urgent', label: 'Urgent' },
 ]
 
-const allStatusOptions: { value: TaskStatus; label: string }[] = [
-  { value: 'to_do',       label: 'To Do'       },
-  { value: 'in_progress', label: 'In Progress' },
-  { value: 'on_hold',     label: 'On Hold'     },
-  { value: 'completed',   label: 'Completed'   },
-]
 
 export default function TaskForm({ onClose, task, parentTaskId, projectId: preProjectId }: TaskFormProps) {
   const isEdit    = !!task
@@ -42,8 +38,7 @@ export default function TaskForm({ onClose, task, parentTaskId, projectId: prePr
   const [title,           setTitle]           = useState(task?.title       ?? '')
   const [description,     setDescription]     = useState(task?.description ?? '')
   const [priority,        setPriority]        = useState<TaskPriority>(task?.priority ?? 'medium')
-  const [status,          setStatus]          = useState<TaskStatus>(task?.status     ?? 'to_do')
-  const [dueDate,         setDueDate]         = useState(task?.dueDate ? task.dueDate.slice(0, 10) : '')
+  const [dueDate,         setDueDate]         = useState<Date | null>(task?.dueDate ? new Date(task.dueDate) : null)
   const [selectedProject, setSelectedProject] = useState(task?.projectId ?? preProjectId ?? '')
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>(
     task?.assignees.map((a) => a.id) ?? [],
@@ -52,22 +47,19 @@ export default function TaskForm({ onClose, task, parentTaskId, projectId: prePr
   const [memberOpen,    setMemberOpen]    = useState(false)
   const [projectSearch, setProjectSearch] = useState('')
   const [memberSearch,  setMemberSearch]  = useState('')
+  const [memberDirection, setMemberDirection] = useState<'down' | 'up'>('down')
+  const [projectDirection, setProjectDirection] = useState<'down' | 'up'>('down')
 
-  const { data: projectsData } = useProjects({ limit: 100, orgId })
-  // In edit mode, fetch the task's project directly to reliably get its orgId
-  // regardless of which org the superadmin has selected in the sidebar
-  const { data: taskProject }  = useProject(isEdit ? (task?.projectId ?? '') : '')
+  const projectTriggerRef = useRef<HTMLButtonElement>(null)
+  const memberTriggerRef  = useRef<HTMLButtonElement>(null)
 
-  const projects     = projectsData?.projects ?? []
-  const selectedProj = projects.find((p) => p.id === selectedProject)
+  const isEditingSubtask = isEdit && !!task?.parentTaskId
+  const projectIdForFilter = isEditingSubtask ? '' : (isEdit ? task?.projectId : selectedProject) ?? ''
 
-  // Edit: use the task project's orgId (direct fetch, always correct)
-  // Create: use the selected project's orgId, falling back to the auth orgId
-  const usersOrgId = isEdit
-    ? (taskProject?.orgId ?? selectedProj?.orgId ?? orgId)
-    : (selectedProj?.orgId ?? orgId)
-
-  const { data: usersData }    = useUsers({ limit: 100, orgId: usersOrgId, role: 'developer' })
+  const { data: projectsData }   = useProjects({ limit: 100, orgId })
+  const { data: usersData }      = useUsers({ limit: 100, orgId, role: 'developer' })
+  const { data: parentTaskData } = useTask(task?.parentTaskId || parentTaskId || '')
+  const { data: projectData }    = useProject(projectIdForFilter)
 
   const { mutate: createTask, isPending: isCreating, error: createError } = useCreateTaskMutation()
   const { mutate: updateTask, isPending: isUpdating, error: updateError } = useUpdateTaskMutation()
@@ -81,38 +73,58 @@ export default function TaskForm({ onClose, task, parentTaskId, projectId: prePr
     {},
   ) ?? {}
 
-  const fetchedUsers = (usersData?.users ?? []).filter((u) => u.role === 'developer')
-  // Always include already-assigned users so they remain visible in the list
-  const assignedUsers = (task?.assignees ?? []).map((a) => ({
-    id: a.id, name: a.name, email: a.email, avatarUrl: a.avatarUrl,
-    role: 'developer' as const, status: 'active' as const,
-  }))
-  const users = [
-    ...fetchedUsers,
-    ...assignedUsers.filter((a) => !fetchedUsers.some((u) => u.id === a.id)),
-  ]
+  const projects = projectsData?.projects ?? []
+  const allUsers = (usersData?.users ?? []).filter((u) => u.role === 'developer')
+  const users = (isSubtask || isEditingSubtask) && parentTaskData
+    ? allUsers.filter((u) => parentTaskData.assignees.some((a) => a.id === u.id))
+    : projectData
+    ? allUsers.filter((u) => projectData.members.some((m) => m.id === u.id))
+    : allUsers
+  const selectedProj = projects.find((p) => p.id === selectedProject)
 
   const filteredProjects = projects.filter((p) =>
     p.title.toLowerCase().includes(projectSearch.toLowerCase()),
   )
-  const filteredUsers = users
-    .filter((u) =>
-      u.name.toLowerCase().includes(memberSearch.toLowerCase()) ||
-      u.email.toLowerCase().includes(memberSearch.toLowerCase()),
-    )
-    .sort((a, b) => {
-      const aSelected = selectedUserIds.includes(a.id)
-      const bSelected = selectedUserIds.includes(b.id)
-      if (aSelected && !bSelected) return -1
-      if (!aSelected && bSelected) return 1
-      return 0
-    })
+  const filteredUsers = users.filter((u) =>
+    u.name.toLowerCase().includes(memberSearch.toLowerCase()) ||
+    u.email.toLowerCase().includes(memberSearch.toLowerCase()),
+  )
 
   const toggleUser = (userId: string) => {
     setSelectedUserIds((prev) =>
       prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId],
     )
   }
+
+  // Fix 1: re-run whenever the filtered user list changes (projectData / parentTaskData / usersData)
+  useEffect(() => {
+    if (!usersData) return
+    const validIds = new Set(users.map((u) => u.id))
+    setSelectedUserIds((prev) => prev.filter((id) => validIds.has(id)))
+  }, [usersData, parentTaskData, projectData])
+
+  // Fix 2: clear assignees when project changes in create mode
+  const isFirstRender = useRef(true)
+  useEffect(() => {
+    if (isFirstRender.current) { isFirstRender.current = false; return }
+    if (!isEdit) setSelectedUserIds([])
+  }, [selectedProject])
+
+  useEffect(() => {
+    if (memberOpen && memberTriggerRef.current) {
+      const rect = memberTriggerRef.current.getBoundingClientRect()
+      const spaceBelow = window.innerHeight - rect.bottom
+      setMemberDirection(spaceBelow < 250 ? 'up' : 'down')
+    }
+  }, [memberOpen])
+
+  useEffect(() => {
+    if (projectOpen && projectTriggerRef.current) {
+      const rect = projectTriggerRef.current.getBoundingClientRect()
+      const spaceBelow = window.innerHeight - rect.bottom
+      setProjectDirection(spaceBelow < 250 ? 'up' : 'down')
+    }
+  }, [projectOpen])
 
   const handleSubmit = (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -123,9 +135,8 @@ export default function TaskForm({ onClose, task, parentTaskId, projectId: prePr
           body: {
             title,
             description:     description || undefined,
-            status,
             priority,
-            dueDate:         dueDate || undefined,
+            dueDate:         dueDate ? dueDate.toISOString().slice(0, 10) : undefined,
             assignedUserIds: selectedUserIds.length > 0 ? selectedUserIds : undefined,
           },
         },
@@ -137,7 +148,7 @@ export default function TaskForm({ onClose, task, parentTaskId, projectId: prePr
         description:     description || undefined,
         priority,
         projectId:       selectedProject,
-        dueDate:         dueDate || undefined,
+        dueDate:         dueDate ? dueDate.toISOString().slice(0, 10) : undefined,
         assignedUserIds: selectedUserIds.length > 0 ? selectedUserIds : undefined,
       }
       if (parentTaskId) body.parentTaskId = parentTaskId
@@ -150,15 +161,10 @@ export default function TaskForm({ onClose, task, parentTaskId, projectId: prePr
 
         <div className="flex items-center pt-6 pb-4 border-b border-gray-100 mb-2">
           <h2 className="text-base font-semibold text-gray-800">
-            {isEdit ? 'Edit Task' : isSubtask ? 'Add Subtask' : 'Create Task'}
+            {isEdit ? (isEditingSubtask ? 'Edit Subtask' : 'Edit Task') : isSubtask ? 'Add Subtask' : 'Create Task'}
           </h2>
         </div>
 
-        {errorMessage && Object.keys(fieldErrors).length === 0 && (
-          <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-3 py-2.5 rounded-lg mb-4">
-            {errorMessage}
-          </div>
-        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
 
@@ -196,6 +202,7 @@ export default function TaskForm({ onClose, task, parentTaskId, projectId: prePr
               <label className="block text-sm font-medium text-gray-700 mb-1">Project <span className="text-red-500">*</span></label>
               <div className="relative">
                 <button
+                  ref={projectTriggerRef}
                   type="button"
                   onClick={() => setProjectOpen((v) => !v)}
                   className={`w-full border rounded-lg px-3 py-2.5 text-sm text-left flex items-center justify-between outline-none focus:border-orange-400 transition-colors ${fieldErrors.projectId ? 'border-red-400' : 'border-gray-200'}`}
@@ -209,7 +216,7 @@ export default function TaskForm({ onClose, task, parentTaskId, projectId: prePr
                 {projectOpen && (
                   <>
                   <div className="fixed inset-0 z-[9]" onClick={() => { setProjectOpen(false); setProjectSearch('') }} />
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-[10]">
+                  <div className={`absolute ${projectDirection === 'up' ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-[10]`}>
                     <div className="p-2 border-b border-gray-100">
                       <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-md px-2.5 py-1.5">
                         <Search size={12} className="text-gray-400 flex-shrink-0" />
@@ -249,7 +256,7 @@ export default function TaskForm({ onClose, task, parentTaskId, projectId: prePr
 
           {/* Priority */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Priority <span className="text-red-500">*</span></label>
             <div className="flex gap-2">
               {priorityOptions.map((opt) => (
                 <button
@@ -268,143 +275,123 @@ export default function TaskForm({ onClose, task, parentTaskId, projectId: prePr
             </div>
           </div>
 
-          {/* Status — edit mode only */}
-          {isEdit && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-              <div className="relative">
-                <select
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value as TaskStatus)}
-                  className="w-full appearance-none border border-gray-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-orange-400 transition-colors cursor-pointer"
-                >
-                  {allStatusOptions
-                    .filter((opt) => {
-                      const current = task?.status
-                      if (current === 'in_progress' && opt.value === 'to_do') return false
-                      if (current === 'on_hold' && opt.value !== 'in_progress' && opt.value !== 'on_hold') return false
-                      if (current === 'completed' && opt.value === 'to_do') return false
-                      return true
-                    })
-                    .map((opt) => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                </select>
-                <ChevronDown size={14} className="absolute right-3 top-3 text-gray-400 pointer-events-none" />
-              </div>
-            </div>
-          )}
 
           {/* Due Date */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Due Date 
-            </label>
-            <input
-              type="date"
-              value={dueDate}
-              min={new Date().toISOString().slice(0, 10)}
-              onChange={(e) => setDueDate(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-orange-400 transition-colors"
-            />
+            <label className="block text-sm font-medium text-gray-700 mb-1">Due Date</label>
+            <div className="relative">
+              <DatePicker
+                selected={dueDate}
+                onChange={(date: Date | null) => setDueDate(date)}
+                minDate={new Date()}
+                dateFormat="dd MMM yyyy"
+                placeholderText="Select a due date"
+                isClearable
+                clearButtonClassName="dp-clear-btn"
+                showMonthDropdown
+                showYearDropdown
+                dropdownMode="select"
+                maxDate={new Date(new Date().setFullYear(new Date().getFullYear() + 5))}
+                className="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2.5 text-sm outline-none focus:border-orange-400 transition-colors"
+                wrapperClassName="w-full"
+                calendarClassName="dp-calendar"
+                popperPlacement="bottom-start"
+                showPopperArrow={false}
+              />
+              <CalendarDays size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            </div>
           </div>
 
           {/* Assignees */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Assignees{' '}
-              {selectedUserIds.length > 0 && (
-                <span className="ml-1.5 text-xs bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full font-medium">
-                  {selectedUserIds.length}
-                </span>
-              )}
-            </label>
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setMemberOpen((v) => !v)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-left flex items-center justify-between outline-none focus:border-orange-400 transition-colors"
-              >
-                {selectedUserIds.length === 0 ? (
-                  <span className="text-gray-400">Select assignees</span>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center -space-x-2">
-                      {selectedUserIds.slice(0, 4).map((id, i) => {
-                        const u = users.find((u) => u.id === id)
-                        if (!u) return null
-                        return (
-                          <div
-                            key={id}
-                            title={u.name}
-                            className={`w-6 h-6 rounded-full ${avatarColors[i % avatarColors.length]} flex items-center justify-center ring-2 ring-white flex-shrink-0`}
-                          >
-                            <span className="text-white text-[10px] font-semibold">{u.name.charAt(0).toUpperCase()}</span>
-                          </div>
-                        )
-                      })}
-                      {selectedUserIds.length > 4 && (
-                        <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center ring-2 ring-white flex-shrink-0">
-                          <span className="text-gray-600 text-[9px] font-semibold">+{selectedUserIds.length - 4}</span>
-                        </div>
-                      )}
-                    </div>
-                    <span className="text-gray-600 text-xs truncate">
-                      {selectedUserIds.length === 1
-                        ? users.find((u) => u.id === selectedUserIds[0])?.name ?? '1 assignee'
-                        : `${selectedUserIds.length} assignees`}
-                    </span>
-                  </div>
-                )}
-                <ChevronDown size={15} className="text-gray-400 flex-shrink-0" />
-              </button>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Assignees
+              </label>
 
-              {memberOpen && (
-                <>
-                <div className="fixed inset-0 z-[9]" onClick={() => { setMemberOpen(false); setMemberSearch('') }} />
-                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-[10]">
-                  <div className="p-2 border-b border-gray-100">
-                    <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-md px-2.5 py-1.5">
-                      <Search size={12} className="text-gray-400 flex-shrink-0" />
-                      <input
-                        autoFocus
-                        value={memberSearch}
-                        onChange={(e) => setMemberSearch(e.target.value)}
-                        placeholder="Search by name or email..."
-                        className="bg-transparent outline-none flex-1 text-xs text-gray-700 placeholder-gray-400"
-                      />
-                    </div>
-                  </div>
-                  <div className="max-h-48 overflow-y-auto">
-                    {filteredUsers.length === 0 ? (
-                      <p className="text-sm text-gray-400 px-3 py-3">No users found</p>
-                    ) : (
-                      filteredUsers.map((u, i) => (
+              {/* Selected User Chips */}
+              {selectedUserIds.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {selectedUserIds.map((id) => {
+                    const u = users.find((user) => user.id === id) || task?.assignees.find(a => a.id === id)
+                    if (!u) return null
+                    return (
+                      <div key={u.id} className="flex items-center gap-1.5 bg-orange-50 border border-orange-200 text-orange-700 px-2.5 py-1 rounded-full text-xs font-medium">
+                        {u.name}
                         <button
-                          key={u.id}
                           type="button"
                           onClick={() => toggleUser(u.id)}
-                          className="w-full text-left px-3 py-2.5 hover:bg-orange-50 flex items-center gap-2.5 transition-colors"
+                          className="hover:bg-orange-200 rounded-full p-0.5 transition-colors"
                         >
-                          <div className={`w-7 h-7 rounded-full ${avatarColors[i % avatarColors.length]} flex items-center justify-center flex-shrink-0`}>
-                            <span className="text-white text-xs font-semibold">{u.name.charAt(0).toUpperCase()}</span>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-700 truncate">{u.name}</p>
-                            <p className="text-xs text-gray-400 truncate">{u.email}</p>
-                          </div>
-                          <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${selectedUserIds.includes(u.id) ? 'bg-orange-500 border-orange-500' : 'border-gray-300'}`}>
-                            {selectedUserIds.includes(u.id) && <Check size={10} className="text-white" />}
-                          </div>
+                          <X size={12} className="text-orange-600" />
                         </button>
-                      ))
-                    )}
-                  </div>
+                      </div>
+                    )
+                  })}
                 </div>
-                </>
               )}
+
+              <div className="relative">
+                <button
+                  ref={memberTriggerRef}
+                  type="button"
+                  onClick={() => setMemberOpen((v) => !v)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-left flex items-center justify-between outline-none focus:border-orange-400 transition-colors"
+                >
+                  <span className="text-gray-400">
+                    {selectedUserIds.length === 0
+                      ? 'Select assignees'
+                      : 'Add more assignees...'}
+                  </span>
+                  <ChevronDown size={15} className="text-gray-400 flex-shrink-0" />
+                </button>
+
+                {memberOpen && (
+                  <>
+                  <div className="fixed inset-0 z-[9]" onClick={() => { setMemberOpen(false); setMemberSearch('') }} />
+                  <div className={`absolute ${memberDirection === 'up' ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-[10]`}>
+                    <div className="p-2 border-b border-gray-100">
+                      <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-md px-2.5 py-1.5">
+                        <Search size={12} className="text-gray-400 flex-shrink-0" />
+                        <input
+                          autoFocus
+                          value={memberSearch}
+                          onChange={(e) => setMemberSearch(e.target.value)}
+                          placeholder="Search by name or email..."
+                          className="bg-transparent outline-none flex-1 text-xs text-gray-700 placeholder-gray-400"
+                        />
+                      </div>
+                    </div>
+                    <div className="max-h-48 overflow-y-auto">
+                      {filteredUsers.filter(u => !selectedUserIds.includes(u.id)).length === 0 ? (
+                        <p className="text-sm text-gray-400 px-3 py-3">No more users to assign</p>
+                      ) : (
+                        filteredUsers.filter(u => !selectedUserIds.includes(u.id)).map((u, i) => (
+                          <button
+                            key={u.id}
+                            type="button"
+                            onClick={() => toggleUser(u.id)}
+                            className="w-full text-left px-3 py-2.5 hover:bg-orange-50 flex items-center gap-2.5 transition-colors"
+                          >
+                            <div className={`w-7 h-7 rounded-full ${avatarColors[i % avatarColors.length]} flex items-center justify-center flex-shrink-0`}>
+                              <span className="text-white text-xs font-semibold">{getInitials(u.name)}</span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-700 truncate">{u.name}</p>
+                              <p className="text-xs text-gray-400 truncate">{u.email}</p>
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                  </>
+                )}
+              </div>
             </div>
-          </div>
+
+          {errorMessage && Object.keys(fieldErrors).length === 0 && (
+            <p className="text-xs text-red-500">{errorMessage}</p>
+          )}
 
           <div className="flex gap-3 pt-1">
             <button

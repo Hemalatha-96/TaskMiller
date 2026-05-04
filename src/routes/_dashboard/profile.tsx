@@ -8,7 +8,7 @@ import { useUploadFile } from '../../queries/uploads.queries'
 import S3Image from '../../components/ui/S3Image'
 import ImageCropperModal from '../../components/ui/ImageCropperModal'
 import { ProfileSkeleton } from '../../components/ui/Skeleton'
-import { formatDate, roleBadgeClasses, userColor } from '../../lib/utils'
+import { formatDate, roleBadgeClasses, userColor , getInitials} from '../../lib/utils'
 import type { ApiError } from '../../types/api.types'
 
 export const Route = createFileRoute('/_dashboard/profile')({
@@ -94,7 +94,7 @@ function ProfilePage() {
                 {profile.avatarUrl ? (
                   <S3Image storageKey={profile.avatarUrl} className="w-full h-full object-cover" />
                 ) : (
-                  <span className="text-white font-bold text-xl">{profile.name.charAt(0).toUpperCase()}</span>
+                  <span className="text-white font-bold text-xl">{getInitials(profile.name)}</span>
                 )}
               </div>
 

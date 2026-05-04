@@ -1,6 +1,6 @@
 import { Users } from 'lucide-react'
 import type { OrgMember } from '../../types/org.types'
-import { userColor, formatDate } from '../../lib/utils'
+import { userColor, formatDate , getInitials} from '../../lib/utils'
 import S3Image from '../ui/S3Image'
 
 interface MemberListProps {
@@ -43,9 +43,9 @@ export default function MemberList({ members }: MemberListProps) {
                 <div className="flex items-center gap-2.5">
                   <div className={`w-7 h-7 rounded-full ${userColor(m.userId)} flex items-center justify-center flex-shrink-0 relative overflow-hidden`}>
                     {m.avatarUrl ? (
-                      <S3Image storageKey={m.avatarUrl} fallbackInitials={m.name.charAt(0)} className="w-full h-full object-cover" />
+                      <S3Image storageKey={m.avatarUrl} fallbackInitials={getInitials(m.name)} className="w-full h-full object-cover" />
                     ) : (
-                      <span className="text-white text-xs font-semibold">{m.name.charAt(0)}</span>
+                      <span className="text-white text-xs font-semibold">{getInitials(m.name)}</span>
                     )}
                   </div>
                   <span className="font-medium text-gray-700 text-sm">{m.name}</span>

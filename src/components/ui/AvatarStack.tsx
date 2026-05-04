@@ -45,7 +45,17 @@ export default function AvatarStack({ avatars, max = 3, size = 'sm' }: AvatarSta
   const handleOpen = () => {
     if (triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect()
-      setPos({ top: rect.bottom + window.scrollY + 6, left: rect.left + window.scrollX })
+      const viewportHeight = window.innerHeight
+      const popoverHeight = Math.min(avatars.length * 48 + 12, 260) // Estimate height based on rows
+      const spaceBelow = viewportHeight - rect.bottom
+
+      let top = rect.bottom + window.scrollY + 6
+      // If space below is tight and space above is better, show it above
+      if (spaceBelow < popoverHeight && rect.top > popoverHeight) {
+        top = rect.top + window.scrollY - popoverHeight - 6
+      }
+
+      setPos({ top, left: Math.min(rect.left + window.scrollX, window.innerWidth - 220) })
     }
     setOpen((v) => !v)
   }
@@ -86,8 +96,14 @@ export default function AvatarStack({ avatars, max = 3, size = 'sm' }: AvatarSta
 
       {open && createPortal(
         <div
-          style={{ position: 'absolute', top: pos.top, left: pos.left, zIndex: 9999 }}
-          className="bg-white border border-gray-200 rounded-xl shadow-lg py-1.5 min-w-[200px]"
+          style={{
+            position: 'absolute',
+            top:      pos.top,
+            left:     pos.left,
+            zIndex:   9999,
+            maxHeight: '260px',
+          }}
+          className="bg-white border border-gray-200 rounded-xl shadow-xl py-1.5 min-w-[210px] overflow-y-auto"
         >
           {avatars.map((a) => (
             <div key={a.id} className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50">

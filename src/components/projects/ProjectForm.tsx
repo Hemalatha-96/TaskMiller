@@ -1,13 +1,13 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { ChevronDown, Check, Camera, Loader2, X, Search } from 'lucide-react'
 import { useCreateProjectMutation, useUpdateProjectMutation } from '../../queries/projects.queries'
 import { useOrgs, useOrg } from '../../queries/orgs.queries'
 import { useUploadFile } from '../../queries/uploads.queries'
 import { useAuth } from '../../hooks/useAuth'
-import { avatarColors } from '../../lib/utils'
+import { avatarColors , getInitials} from '../../lib/utils'
 import S3Image from '../ui/S3Image'
 import ImageCropperModal from '../ui/ImageCropperModal'
-import type { Project, ProjectStatus } from '../../types/project.types'
+import type { Project } from '../../types/project.types'
 import type { ApiError } from '../../types/api.types'
 
 interface ProjectFormProps {
@@ -15,11 +15,6 @@ interface ProjectFormProps {
   project?: Project        // pass to enter edit mode
 }
 
-const statusOptions: { value: ProjectStatus; label: string }[] = [
-  { value: 'active',    label: 'Active'    },
-  { value: 'on_hold',   label: 'On Hold'   },
-  { value: 'completed', label: 'Completed' },
-]
 
 export default function ProjectForm({ onClose, project }: ProjectFormProps) {
   const isEdit        = !!project
@@ -27,7 +22,6 @@ export default function ProjectForm({ onClose, project }: ProjectFormProps) {
 
   const [title,           setTitle]           = useState(project?.title       ?? '')
   const [description,     setDescription]     = useState(project?.description ?? '')
-  const [status,          setStatus]          = useState<ProjectStatus>(project?.status ?? 'active')
   const [logoUrl,         setLogoUrl]         = useState<string | null>(project?.logoUrl ?? null)
   const [orgId,           setOrgId]           = useState(project?.orgId ?? (!isSuperAdmin ? (adminOrgId ?? '') : ''))
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>(
@@ -37,6 +31,11 @@ export default function ProjectForm({ onClose, project }: ProjectFormProps) {
   const [memberOpen,   setMemberOpen]   = useState(false)
   const [orgSearch,    setOrgSearch]    = useState('')
   const [memberSearch, setMemberSearch] = useState('')
+  const [orgDirection, setOrgDirection] = useState<'down' | 'up'>('down')
+  const [memberDirection, setMemberDirection] = useState<'down' | 'up'>('down')
+
+  const orgTriggerRef = useRef<HTMLButtonElement>(null)
+  const memberTriggerRef = useRef<HTMLButtonElement>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [selectedFileForCrop, setSelectedFileForCrop] = useState<{ file: File; dataUrl: string } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -58,7 +57,7 @@ export default function ProjectForm({ onClose, project }: ProjectFormProps) {
   ) ?? {}
 
   const orgs    = orgsData?.organizations ?? []
-  const members = orgDetail?.members ?? []
+  const members = orgDetail?.members.filter((m) => m.role === 'developer') ?? []
 
   const selectedOrg = orgs.find((o) => o.id === orgId)
 
@@ -75,6 +74,22 @@ export default function ProjectForm({ onClose, project }: ProjectFormProps) {
       prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId],
     )
   }
+
+  useEffect(() => {
+    if (orgOpen && orgTriggerRef.current) {
+      const rect = orgTriggerRef.current.getBoundingClientRect()
+      const spaceBelow = window.innerHeight - rect.bottom
+      setOrgDirection(spaceBelow < 250 ? 'up' : 'down')
+    }
+  }, [orgOpen])
+
+  useEffect(() => {
+    if (memberOpen && memberTriggerRef.current) {
+      const rect = memberTriggerRef.current.getBoundingClientRect()
+      const spaceBelow = window.innerHeight - rect.bottom
+      setMemberDirection(spaceBelow < 250 ? 'up' : 'down')
+    }
+  }, [memberOpen])
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -107,7 +122,15 @@ export default function ProjectForm({ onClose, project }: ProjectFormProps) {
     e.preventDefault()
     if (isEdit) {
       updateProject(
-        { id: project.id, body: { title, description: description || undefined, status, logoUrl: logoUrl || undefined } },
+        {
+          id: project.id,
+          body: {
+            title,
+            description:     description || undefined,
+            logoUrl:         logoUrl || undefined,
+            assignedUserIds: selectedUserIds,
+          },
+        },
         { onSuccess: onClose },
       )
     } else {
@@ -133,11 +156,6 @@ export default function ProjectForm({ onClose, project }: ProjectFormProps) {
           </h2>
         </div>
 
-        {errorMessage && Object.keys(fieldErrors).length === 0 && (
-          <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-3 py-2.5 rounded-lg mb-4">
-            {errorMessage}
-          </div>
-        )}
 
         {/* Logo Upload Section */}
         <div className="flex flex-col items-center mb-6 mt-2">
@@ -222,6 +240,7 @@ export default function ProjectForm({ onClose, project }: ProjectFormProps) {
               <label className="block text-sm font-medium text-gray-700 mb-1">Organization <span className="text-red-500">*</span></label>
               <div className="relative">
                 <button
+                  ref={orgTriggerRef}
                   type="button"
                   onClick={() => setOrgOpen((v) => !v)}
                   className={`w-full border rounded-lg px-3 py-2.5 text-sm text-left flex items-center justify-between outline-none focus:border-orange-400 transition-colors ${fieldErrors.orgId ? 'border-red-400' : 'border-gray-200'}`}
@@ -235,7 +254,7 @@ export default function ProjectForm({ onClose, project }: ProjectFormProps) {
                 {orgOpen && (
                   <>
                   <div className="fixed inset-0 z-[9]" onClick={() => { setOrgOpen(false); setOrgSearch('') }} />
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-[10]">
+                  <div className={`absolute ${orgDirection === 'up' ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-[10]`}>
                     <div className="p-2 border-b border-gray-100">
                       <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-md px-2.5 py-1.5">
                         <Search size={12} className="text-gray-400 flex-shrink-0" />
@@ -273,20 +292,38 @@ export default function ProjectForm({ onClose, project }: ProjectFormProps) {
             </div>
           )}
 
-          {/* Members — create mode only, shown after org is selected */}
-          {!isEdit && orgId && (
+          {/* Members — shown after org is selected */}
+          {orgId && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Members{' '}
-                <span className="text-gray-400 font-normal">(optional)</span>
-                {selectedUserIds.length > 0 && (
-                  <span className="ml-1.5 text-xs bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full font-medium">
-                    {selectedUserIds.length}
-                  </span>
-                )}
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Members <span className="text-gray-400 font-normal">(optional)</span>
               </label>
+
+              {/* Selected Member Chips */}
+              {selectedUserIds.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {selectedUserIds.map((id) => {
+                    const u = members.find((user) => user.userId === id)
+                    if (!u) return null
+                    return (
+                      <div key={id} className="flex items-center gap-1.5 bg-orange-50 border border-orange-200 text-orange-700 px-2.5 py-1 rounded-full text-xs font-medium">
+                        {u.name}
+                        <button
+                          type="button"
+                          onClick={() => toggleMember(id)}
+                          className="hover:bg-orange-200 rounded-full p-0.5 transition-colors"
+                        >
+                          <X size={12} className="text-orange-600" />
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
               <div className="relative">
                 <button
+                  ref={memberTriggerRef}
                   type="button"
                   onClick={() => setMemberOpen((v) => !v)}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-left flex items-center justify-between outline-none focus:border-orange-400 transition-colors"
@@ -294,7 +331,7 @@ export default function ProjectForm({ onClose, project }: ProjectFormProps) {
                   <span className="text-gray-400">
                     {selectedUserIds.length === 0
                       ? 'Select members'
-                      : `${selectedUserIds.length} member${selectedUserIds.length > 1 ? 's' : ''} selected`}
+                      : 'Add more members...'}
                   </span>
                   <ChevronDown size={15} className="text-gray-400 flex-shrink-0" />
                 </button>
@@ -302,7 +339,7 @@ export default function ProjectForm({ onClose, project }: ProjectFormProps) {
                 {memberOpen && (
                   <>
                   <div className="fixed inset-0 z-[9]" onClick={() => { setMemberOpen(false); setMemberSearch('') }} />
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-[10]">
+                  <div className={`absolute ${memberDirection === 'up' ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-[10]`}>
                     <div className="p-2 border-b border-gray-100">
                       <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-md px-2.5 py-1.5">
                         <Search size={12} className="text-gray-400 flex-shrink-0" />
@@ -316,10 +353,10 @@ export default function ProjectForm({ onClose, project }: ProjectFormProps) {
                       </div>
                     </div>
                     <div className="max-h-48 overflow-y-auto">
-                      {filteredMembers.length === 0 ? (
-                        <p className="text-sm text-gray-400 px-3 py-3">No members found</p>
+                      {filteredMembers.filter(m => !selectedUserIds.includes(m.userId)).length === 0 ? (
+                        <p className="text-sm text-gray-400 px-3 py-3">No more members to assign</p>
                       ) : (
-                        filteredMembers.map((m, i) => (
+                        filteredMembers.filter(m => !selectedUserIds.includes(m.userId)).map((m, i) => (
                           <button
                             key={m.userId}
                             type="button"
@@ -327,14 +364,11 @@ export default function ProjectForm({ onClose, project }: ProjectFormProps) {
                             className="w-full text-left px-3 py-2.5 hover:bg-orange-50 flex items-center gap-2.5 transition-colors"
                           >
                             <div className={`w-7 h-7 rounded-full ${avatarColors[i % avatarColors.length]} flex items-center justify-center flex-shrink-0`}>
-                              <span className="text-white text-xs font-semibold">{m.name.charAt(0).toUpperCase()}</span>
+                              <span className="text-white text-xs font-semibold">{getInitials(m.name)}</span>
                             </div>
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium text-gray-700 truncate">{m.name}</p>
                               <p className="text-xs text-gray-400 truncate">{m.email}</p>
-                            </div>
-                            <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${selectedUserIds.includes(m.userId) ? 'bg-orange-500 border-orange-500' : 'border-gray-300'}`}>
-                              {selectedUserIds.includes(m.userId) && <Check size={10} className="text-white" />}
                             </div>
                           </button>
                         ))
@@ -347,27 +381,9 @@ export default function ProjectForm({ onClose, project }: ProjectFormProps) {
             </div>
           )}
 
-          {/* Status — edit mode only */}
-          {isEdit && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-              <div className="flex gap-2">
-                {statusOptions.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setStatus(opt.value)}
-                    className={`flex-1 py-2 rounded-lg text-xs font-medium border transition-colors ${
-                      status === opt.value
-                        ? 'bg-orange-500 text-white border-orange-500'
-                        : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+
+          {errorMessage && Object.keys(fieldErrors).length === 0 && (
+            <p className="text-xs text-red-500">{errorMessage}</p>
           )}
 
           <div className="flex gap-3 pt-1">

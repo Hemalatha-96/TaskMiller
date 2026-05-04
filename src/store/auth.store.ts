@@ -53,4 +53,5 @@ export function clearAuth() {
 
 export function useAuthStore() {
   return useStore(authStore, (state) => state)
+
 }

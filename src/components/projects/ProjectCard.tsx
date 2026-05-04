@@ -1,13 +1,12 @@
 import { useNavigate } from '@tanstack/react-router'
 import AvatarStack from '../ui/AvatarStack'
 import S3Image from '../ui/S3Image'
-import { projectStatusBadge } from '../../lib/utils'
+import { projectStatusBadge, getInitials } from '../../lib/utils'
 import type { Project } from '../../types/project.types'
 
 interface ProjectCardProps {
   project: Project
   index:   number
-  onView?: (id: string) => void
 }
 
 const cardColors = [
@@ -23,10 +22,10 @@ const statusLabel: Record<string, string> = {
   completed: 'Completed',
 }
 
-export default function ProjectCard({ project, index, onView }: ProjectCardProps) {
+export default function ProjectCard({ project, index }: ProjectCardProps) {
   const navigate = useNavigate()
   const color    = cardColors[index % cardColors.length]
-  const initials = project.title.slice(0, 2).toUpperCase()
+  const initials = getInitials(project.title)
   const avatars  = project.members.map((m, i) => ({
     id:    m.id,
     name:  m.name,
@@ -36,7 +35,7 @@ export default function ProjectCard({ project, index, onView }: ProjectCardProps
 
   return (
     <div
-      onClick={() => onView ? onView(project.id) : navigate({ to: '/projects/$projectId', params: { projectId: project.id } })}
+      onClick={() => navigate({ to: '/projects/$projectId', params: { projectId: project.id }, search: { view: undefined } })}
       className="bg-white border border-gray-100 rounded-xl p-5 hover:shadow-md hover:border-orange-100 cursor-pointer transition-all group"
     >
       {/* Logo */}

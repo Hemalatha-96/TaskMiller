@@ -37,11 +37,6 @@ export default function UserForm({ onClose }: UserFormProps) {
           <h2 className="text-base font-semibold text-gray-800">Create User</h2>
         </div>
 
-        {errorMessage && Object.keys(fieldErrors).length === 0 && (
-          <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-3 py-2.5 rounded-lg mb-4">
-            {errorMessage}
-          </div>
-        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
 
@@ -117,6 +112,10 @@ export default function UserForm({ onClose }: UserFormProps) {
                 ))}
               </div>
             </div>
+          )}
+
+          {errorMessage && Object.keys(fieldErrors).length === 0 && (
+            <p className="text-xs text-red-500">{errorMessage}</p>
           )}
 
           <div className="flex gap-3 pt-1">

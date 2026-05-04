@@ -75,8 +75,9 @@ export interface CreateProjectBody {
 }
 
 export interface UpdateProjectBody {
-  title?:       string
-  description?: string
-  status?:      ProjectStatus
-  logoUrl?:     string
+  title?:           string
+  description?:     string
+  status?:          ProjectStatus
+  logoUrl?:         string
+  assignedUserIds?: string[]
 }

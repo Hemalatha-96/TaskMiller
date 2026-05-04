@@ -28,8 +28,7 @@ export default function ImageCropperModal({ imageSrc, fileName, fileType, onCanc
     try {
       const croppedFile = await getCroppedImg(imageSrc, croppedAreaPixels, fileName, fileType)
       await onSave(croppedFile)
-    } catch (e) {
-      console.error(e)
+    } catch {
     } finally {
       setIsSaving(false)
     }
